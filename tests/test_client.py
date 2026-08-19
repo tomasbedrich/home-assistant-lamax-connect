@@ -592,11 +592,178 @@ async def test_snapshot_gathers_location_and_health(client: LamaxClient) -> None
             f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
             body=encrypted({"code": 0, "devicestep": "9474", "heart_rate": 93}),
         )
+        mocked.post(
+            f"{BASE}/rtosWechat/getVoiceListPost",
+            body=encrypted(
+                {
+                    "code": 0,
+                    "chaMsgList": [
+                        {"msg_content": "260819143000_555_1_ahoj", "msg_type": 1}
+                    ],
+                }
+            ),
+        )
         result = await client.async_get_snapshots()
 
     snapshot = result["111"]
+    assert [m.content for m in snapshot.messages] == ["ahoj"]
     assert snapshot.health is not None
     assert snapshot.health.steps == 9474
     assert snapshot.health.heart_rate == 93
     assert snapshot.location is not None
     assert snapshot.location.battery == 55
+
+
+async def test_group_message_addresses_the_family_conversation(
+    client: LamaxClient,
+) -> None:
+    """A family-chat message uses receiver "1", not the watch's IMEI."""
+    client.token = "TOK"
+    client.u_id = 42
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/rtosWechat/appSendGroupMsg", body=encrypted({"code": 0}))
+        await client.async_send_group_message("860000000000001", 7, "dinner time")
+
+        sent = json.loads(decrypt(next(iter(mocked.requests.values()))[0].kwargs["data"]))
+
+    _, uid, receiver, text = sent["msg_content"].split("_", 3)
+    assert uid == "42"
+    assert receiver == "1"
+    assert text == "dinner time"
+
+
+@pytest.mark.parametrize(
+    "send",
+    ["async_send_message", "async_send_group_message"],
+)
+async def test_long_messages_are_truncated(client: LamaxClient, send: str) -> None:
+    """The watch trims past 30 characters, so do it up front for both targets."""
+    client.token = "TOK"
+    client.u_id = 42
+    long_message = "x" * 45
+    path = "appSendDevice" if send == "async_send_message" else "appSendGroupMsg"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/rtosWechat/{path}", body=encrypted({"code": 0}))
+        actually_sent = await getattr(client, send)("860000000000001", 7, long_message)
+
+        sent = json.loads(decrypt(next(iter(mocked.requests.values()))[0].kwargs["data"]))
+
+    assert actually_sent == "x" * 30
+    assert sent["msg_content"].split("_", 3)[3] == "x" * 30
+
+
+async def test_message_at_the_limit_is_untouched(client: LamaxClient) -> None:
+    """Exactly 30 characters must not be trimmed."""
+    client.token = "TOK"
+    client.u_id = 42
+    exact = "y" * 30
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/rtosWechat/appSendDevice", body=encrypted({"code": 0}))
+        assert await client.async_send_message("860000000000001", 7, exact) == exact
+
+
+async def test_group_message_requires_login(client: LamaxClient) -> None:
+    """Sending to the family chat without a session raises."""
+    with pytest.raises(LamaxAuthError):
+        await client.async_send_group_message("860000000000001", 7, "hi")
+
+
+async def test_get_messages_parses_the_envelope(client: LamaxClient) -> None:
+    """Incoming messages are split into sender, receiver and body."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/rtosWechat/getVoiceListPost",
+            body=encrypted(
+                {
+                    "code": 0,
+                    "chaMsgList": [
+                        {"msg_content": "260819143000_555_1_ahoj tati", "msg_type": 1},
+                        {
+                            "msg_content": "260819143100_555_FFF860000000000001_12",
+                            "msg_type": 3,
+                        },
+                    ],
+                }
+            ),
+        )
+        messages = await client.async_get_messages(1)
+
+    group, voice = messages
+    assert group.content == "ahoj tati"
+    assert group.sender_id == "555"
+    assert group.kind == "text"
+    assert group.is_group is True
+    assert group.sent_at == datetime(2026, 8, 19, 14, 30)
+
+    assert voice.kind == "voice"
+    assert voice.duration == 12
+    assert voice.content == ""
+    assert voice.is_group is False
+
+
+async def test_get_messages_keeps_underscores_in_body(client: LamaxClient) -> None:
+    """Only the first three underscores are separators."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/rtosWechat/getVoiceListPost",
+            body=encrypted(
+                {
+                    "code": 0,
+                    "chaMsgList": [{"msg_content": "260819143000_555_1_a_b_c", "msg_type": 1}],
+                }
+            ),
+        )
+        assert (await client.async_get_messages(1))[0].content == "a_b_c"
+
+
+async def test_get_messages_skips_malformed_and_empty(client: LamaxClient) -> None:
+    """Entries without the expected envelope are dropped, code 2 means none."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/rtosWechat/getVoiceListPost",
+            body=encrypted(
+                {
+                    "code": 0,
+                    "chaMsgList": [
+                        {"msg_content": "garbage", "msg_type": 1},
+                        {"msg_content": "notatimestamp_5_1_hi", "msg_type": 1},
+                    ],
+                }
+            ),
+        )
+        messages = await client.async_get_messages(1)
+    assert len(messages) == 1
+    assert messages[0].sent_at is None
+
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/rtosWechat/getVoiceListPost",
+            body=encrypted({"code": 2, "chaMsgList": []}),
+        )
+        assert await client.async_get_messages(1) == []
+
+
+async def test_snapshot_survives_message_failure(client: LamaxClient) -> None:
+    """A failed chat poll leaves the rest of the snapshot intact."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/watchAppUser/getbindDeviceListPost",
+            body=encrypted({"code": 0, "deviceList": [{"imei": "111", "name": "A", "d_id": 1}]}),
+        )
+        mocked.post(
+            f"{BASE}/location/getlast/searchPost",
+            body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0"}),
+        )
+        mocked.post(
+            f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
+            body=encrypted({"code": 0, "devicestep": "5"}),
+        )
+        mocked.post(f"{BASE}/rtosWechat/getVoiceListPost", exception=aiohttp.ClientError("down"))
+        result = await client.async_get_snapshots()
+
+    assert result["111"].messages == ()
+    assert result["111"].health is not None

@@ -16,6 +16,7 @@ from custom_components.lamax_connect.lamax import (
     DeviceSnapshot,
     Health,
     Location,
+    Message,
 )
 
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -81,6 +82,14 @@ def health() -> Health:
 
 
 @pytest.fixture
+def messages() -> tuple[Message, ...]:
+    """Return one already-delivered message from the watch."""
+    parsed = Message.from_json({"msg_content": "260819143000_555_1_ahoj tati", "msg_type": 1})
+    assert parsed is not None
+    return (parsed,)
+
+
+@pytest.fixture
 def mock_config_entry() -> MockConfigEntry:
     """Return a configured LAMAX Connect entry."""
     return MockConfigEntry(
@@ -92,7 +101,12 @@ def mock_config_entry() -> MockConfigEntry:
 
 
 @pytest.fixture
-def mock_client(device: Device, location: Location, health: Health) -> Generator[AsyncMock]:
+def mock_client(
+    device: Device,
+    location: Location,
+    health: Health,
+    messages: tuple[Message, ...],
+) -> Generator[AsyncMock]:
     """Patch LamaxClient everywhere the integration constructs one."""
     with (
         patch("custom_components.lamax_connect.LamaxClient", autospec=True) as mock_in_init,
@@ -104,9 +118,10 @@ def mock_client(device: Device, location: Location, health: Health) -> Generator
         client.u_id = 2000000000000002
         client.login = AsyncMock(return_value=None)
         client.async_get_snapshots = AsyncMock(
-            return_value={device.imei: DeviceSnapshot(device, location, health)}
+            return_value={device.imei: DeviceSnapshot(device, location, health, messages)}
         )
-        client.async_send_message = AsyncMock(return_value=None)
+        client.async_send_message = AsyncMock(return_value="ok")
+        client.async_send_group_message = AsyncMock(return_value="ok")
         client.async_find_device = AsyncMock(return_value=None)
         client.async_request_location_update = AsyncMock(return_value=None)
         yield client

@@ -62,7 +62,15 @@
         "name": "Najít hodinky"
       }
     },
+    "event": {
+      "message_received": {
+        "name": "Přijatá zpráva"
+      }
+    },
     "notify": {
+      "family_chat": {
+        "name": "Rodinný chat"
+      },
       "message": {
         "name": "Zpráva"
       }

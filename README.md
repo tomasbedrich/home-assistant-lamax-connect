@@ -13,8 +13,8 @@ Android app. It is not affiliated with or endorsed by LAMAX Electronics.
 - **Location tracking** - each watch appears as a `device_tracker` with GPS
   coordinates and accuracy, so it works with zones, maps and presence
   automations.
-- **Messaging** - each watch gets a `notify` entity, so you can send it a text
-  message from any automation or script.
+- **Messaging** - send a private message to the watch or post to the shared
+  family chat, and get an event in Home Assistant when the watch replies.
 - **Activity and health sensors** - battery, steps, calories, distance, heart
   rate and blood oxygen.
 - **Buttons** to ask the watch for a fresh GPS fix, or to make it ring so it can
@@ -114,7 +114,9 @@ For each watch (`<watch>` is the watch name from the app):
 | Entity | Description |
 | --- | --- |
 | `device_tracker.<watch>` | GPS position and accuracy |
-| `notify.<watch>_message` | Send a text message to the watch |
+| `notify.<watch>_message` | Send a private message to the watch |
+| `notify.<watch>_family_chat` | Post to the shared family conversation |
+| `event.<watch>_message_received` | Fires when the watch sends a message |
 | `sensor.<watch>_battery` | Battery percentage |
 | `sensor.<watch>_steps` | Today's step count as reported by the watch |
 | `sensor.<watch>_calories` | Calories burned today |
@@ -122,6 +124,59 @@ For each watch (`<watch>` is the watch name from the app):
 | `sensor.<watch>_heart_rate` | Last heart rate measurement |
 | `sensor.<watch>_blood_oxygen` | Last blood oxygen (SpO₂) measurement |
 | `sensor.<watch>_last_seen` | When the watch last reported a position |
+
+### Family chat
+
+The watch has two conversations, and each gets its own entity:
+
+- `notify.<watch>_message` - a private thread between your account and the
+  watch.
+- `notify.<watch>_family_chat` - the shared conversation every family member
+  bound to the watch can see.
+
+> [!IMPORTANT]
+> **Messages are limited to 30 characters.** The watch silently trims anything
+> longer, so the integration truncates to 30 characters up front and logs a
+> warning telling you exactly what was sent.
+
+When the watch sends a message, `event.<watch>_message_received` fires with the
+event type `text`, `emoji` or `voice`, and these attributes:
+
+| Attribute | Meaning |
+| --- | --- |
+| `content` | Message text (empty for voice notes) |
+| `sender_id` | LAMAX user id of the sender |
+| `is_group` | `true` if it went to the family chat |
+| `sent_at` | Watch-local time the message was written |
+| `duration` | Voice note length in seconds, otherwise `null` |
+
+```yaml
+automation:
+  - alias: "Announce messages from the watch"
+    triggers:
+      - trigger: state
+        entity_id: event.junior_message_received
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.attributes.event_type == 'text' }}"
+    actions:
+      - action: notify.persistent_notification
+        data:
+          message: >-
+            Junior: {{ trigger.to_state.attributes.content }}
+```
+
+Two things to know about receiving:
+
+- **Messages arrive on the 5 minute poll**, not instantly. The official app
+  gets them pushed over RongCloud IM, which this integration does not
+  implement.
+- **Messages already waiting when Home Assistant starts do not fire events.**
+  They are recorded as history, so a restart never replays old conversation
+  into your automations.
+
+**Voice notes** report their length but the audio is not downloaded - it lives
+in Alibaba Cloud object storage that this integration does not fetch.
 
 ### About the health readings
 
@@ -206,9 +261,12 @@ script:
 - **Polling only.** The LAMAX app receives live push over RongCloud IM; this
   integration does not implement that protocol, so positions and incoming
   messages are only as fresh as the 5-minute poll.
-- **Sending only.** Messages sent *from* the watch are not exposed as entities.
-- **No voice messages.** Only text is supported; voice notes go through Alibaba
-  Cloud OSS and are not implemented.
+- **Messages are capped at 30 characters** by the watch.
+- **Voice notes cannot be played.** Incoming ones fire an event with their
+  duration, but the audio is not downloaded, and sending voice is not
+  supported.
+- **Chat is polled, not pushed.** Expect up to a 5 minute delay on incoming
+  messages.
 - **No geofence management.** The watch's own geofences can be read from the API
   but are not exposed - use Home Assistant zones with the `device_tracker`
   instead, which is more flexible.

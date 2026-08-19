@@ -18,12 +18,15 @@ import aiohttp
 from .crypto import decrypt, encrypt
 from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
 from .models import (
+    GROUP_RECEIVER,
+    MAX_MESSAGE_LENGTH,
     MSG_TYPE_TEXT,
     Device,
     DeviceSnapshot,
     GeoFence,
     Health,
     Location,
+    Message,
     TrackPoint,
 )
 
@@ -252,20 +255,71 @@ class LamaxClient:
 
     async def async_send_message(
         self, imei: str, d_id: int, message: str, msg_type: int = MSG_TYPE_TEXT
-    ) -> None:
-        """Send a text or emoji message to a watch."""
+    ) -> str:
+        """Send a private message to a watch. Returns the text actually sent."""
+        return await self._async_send(
+            "/rtosWechat/appSendDevice", imei, d_id, f"FFF{imei}", message, msg_type
+        )
+
+    async def async_send_group_message(
+        self, imei: str, d_id: int, message: str, msg_type: int = MSG_TYPE_TEXT
+    ) -> str:
+        """Send a message to the family conversation.
+
+        Returns the text actually sent, which may be truncated.
+        """
+        return await self._async_send(
+            "/rtosWechat/appSendGroupMsg", imei, d_id, GROUP_RECEIVER, message, msg_type
+        )
+
+    async def _async_send(
+        self,
+        path: str,
+        imei: str,
+        d_id: int,
+        receiver: str,
+        message: str,
+        msg_type: int,
+    ) -> str:
+        """Post a chat message, truncating it the way the watch would."""
         if self.u_id is None:
             raise LamaxAuthError(CODE_SESSION_EXPIRED, "Not logged in")
+
+        text = message[:MAX_MESSAGE_LENGTH]
+        if text != message:
+            _LOGGER.warning(
+                "Message truncated to the watch limit of %s characters: %r -> %r",
+                MAX_MESSAGE_LENGTH,
+                message,
+                text,
+            )
+
         stamp = datetime.now().strftime("%y%m%d%H%M%S")
         await self._post(
-            "/rtosWechat/appSendDevice",
+            path,
             {
                 "d_id": d_id,
                 "imei": imei,
                 "msg_type": msg_type,
-                "msg_content": f"{stamp}_{self.u_id}_FFF{imei}_{message}",
+                "msg_content": f"{stamp}_{self.u_id}_{receiver}_{text}",
             },
         )
+        return text
+
+    async def async_get_messages(self, d_id: int) -> list[Message]:
+        """Return messages sent from a watch.
+
+        The backend keeps returning delivered messages, so callers must
+        de-duplicate on :attr:`Message.raw`. Live delivery in the official app
+        goes over RongCloud IM; this is the polling fallback.
+        """
+        result = await self._post(
+            "/rtosWechat/getVoiceListPost",
+            {"did": d_id},
+            ok_codes=(CODE_OK, CODE_NO_DATA),
+        )
+        parsed = (Message.from_json(item) for item in result.get("chaMsgList", []))
+        return [message for message in parsed if message is not None]
 
     # -- convenience ------------------------------------------------------
 
@@ -287,12 +341,13 @@ class LamaxClient:
 
     async def _async_snapshot(self, device: Device) -> DeviceSnapshot:
         """Gather the per-watch readings, tolerating individual failures."""
-        location_result, health_result = await asyncio.gather(
+        location_result, health_result, messages_result = await asyncio.gather(
             self.async_get_location(device.d_id),
             self.async_get_health(device.d_id, device.imei),
+            self.async_get_messages(device.d_id),
             return_exceptions=True,
         )
-        for value in (location_result, health_result):
+        for value in (location_result, health_result, messages_result):
             if isinstance(value, LamaxAuthError):
                 raise value
 
@@ -308,4 +363,10 @@ class LamaxClient:
         else:
             health = health_result
 
-        return DeviceSnapshot(device, location, health)
+        messages: tuple[Message, ...] = ()
+        if isinstance(messages_result, BaseException):
+            _LOGGER.debug("No messages for %s: %s", device.imei, messages_result)
+        else:
+            messages = tuple(messages_result)
+
+        return DeviceSnapshot(device, location, health, messages)

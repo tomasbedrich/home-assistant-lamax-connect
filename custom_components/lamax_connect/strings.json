@@ -62,7 +62,15 @@
         "name": "Find watch"
       }
     },
+    "event": {
+      "message_received": {
+        "name": "Message received"
+      }
+    },
     "notify": {
+      "family_chat": {
+        "name": "Family chat"
+      },
       "message": {
         "name": "Message"
       }

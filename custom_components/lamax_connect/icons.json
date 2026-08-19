@@ -16,7 +16,15 @@
         "default": "mdi:bell-ring"
       }
     },
+    "event": {
+      "message_received": {
+        "default": "mdi:message-badge"
+      }
+    },
     "notify": {
+      "family_chat": {
+        "default": "mdi:account-group"
+      },
       "message": {
         "default": "mdi:message-text"
       }

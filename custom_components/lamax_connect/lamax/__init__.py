@@ -13,6 +13,9 @@ from .client import (
 )
 from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
 from .models import (
+    GROUP_RECEIVER,
+    MAX_MESSAGE_LENGTH,
+    MSG_KINDS,
     MSG_TYPE_EMOJI,
     MSG_TYPE_TEXT,
     MSG_TYPE_VOICE,
@@ -21,14 +24,18 @@ from .models import (
     GeoFence,
     Health,
     Location,
+    Message,
     TrackPoint,
 )
 
 __all__ = [
     "ALTERNATE_HOST",
     "DEFAULT_HOST",
+    "GROUP_RECEIVER",
     "LOGIN_TYPE_EMAIL",
     "LOGIN_TYPE_PHONE",
+    "MAX_MESSAGE_LENGTH",
+    "MSG_KINDS",
     "MSG_TYPE_EMOJI",
     "MSG_TYPE_TEXT",
     "MSG_TYPE_VOICE",
@@ -41,5 +48,6 @@ __all__ = [
     "LamaxConnectionError",
     "LamaxError",
     "Location",
+    "Message",
     "TrackPoint",
 ]

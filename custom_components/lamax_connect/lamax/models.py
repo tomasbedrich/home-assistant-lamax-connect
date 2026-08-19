@@ -10,10 +10,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-# msg_type values used by /rtosWechat/appSendDevice
+# msg_type values used by the /rtosWechat endpoints
 MSG_TYPE_TEXT = 1
 MSG_TYPE_EMOJI = 2
 MSG_TYPE_VOICE = 3
+
+MSG_KINDS = {MSG_TYPE_TEXT: "text", MSG_TYPE_EMOJI: "emoji", MSG_TYPE_VOICE: "voice"}
+
+# The watch silently trims anything longer, so truncate up front and say so
+# rather than letting the recipient receive a half sentence unannounced.
+MAX_MESSAGE_LENGTH = 30
+
+# Receiver segment of msg_content that marks the shared family conversation
+# (a private message addresses the watch as "FFF<imei>" instead).
+GROUP_RECEIVER = "1"
 
 
 type JsonDict = dict[str, Any]
@@ -197,3 +207,71 @@ class DeviceSnapshot:
     device: Device
     location: Location | None
     health: Health | None
+    messages: tuple[Message, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Message:
+    """A chat message sent from a watch.
+
+    ``raw`` is the untouched ``msg_content`` and is the only stable identity
+    the backend offers - it never deletes delivered messages, so clients must
+    de-duplicate on it.
+    """
+
+    raw: str
+    content: str
+    msg_type: int
+    sender_id: str
+    receiver_id: str
+    sent_at: datetime | None
+    duration: int | None
+
+    @property
+    def kind(self) -> str:
+        """Return "text", "emoji", "voice", or "unknown"."""
+        return MSG_KINDS.get(self.msg_type, "unknown")
+
+    @property
+    def is_group(self) -> bool:
+        """Return True if this went to the family conversation."""
+        return self.receiver_id == GROUP_RECEIVER
+
+    @classmethod
+    def from_json(cls, data: JsonDict) -> Message | None:
+        """Build from a /rtosWechat/getVoiceListPost entry.
+
+        Returns None for entries that do not carry the expected
+        ``<yyMMddHHmmss>_<sender>_<receiver>_<content>`` envelope.
+        """
+        raw = str(data.get("msg_content", ""))
+        parts = raw.split("_", 3)
+        if len(parts) < 3:
+            return None
+        stamp, sender_id, receiver_id = parts[0], parts[1], parts[2]
+        body = parts[3] if len(parts) > 3 else ""
+
+        try:
+            # Watch-local wall clock; the payload carries no timezone.
+            sent_at = datetime.strptime(stamp, "%y%m%d%H%M%S")
+        except ValueError:
+            sent_at = None
+
+        msg_type = _as_int(data.get("msg_type"), MSG_TYPE_TEXT)
+        duration = None
+        content = body
+        if msg_type == MSG_TYPE_VOICE:
+            # For voice the trailing segment is a length in seconds and the
+            # audio itself lives in object storage we do not fetch.
+            duration = _as_int(body) or None
+            content = ""
+
+        return cls(
+            raw=raw,
+            content=content,
+            msg_type=msg_type,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+            sent_at=sent_at,
+            duration=duration,
+        )

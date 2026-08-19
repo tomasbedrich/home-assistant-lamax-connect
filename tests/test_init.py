@@ -136,7 +136,7 @@ async def test_missing_health_leaves_sensors_unknown(
     from custom_components.lamax_connect.lamax import DeviceSnapshot
 
     mock_client.async_get_snapshots.return_value = {
-        device.imei: DeviceSnapshot(device, location, None)
+        device.imei: DeviceSnapshot(device, location, None, ())
     }
     await setup_entry(hass, mock_config_entry)
 

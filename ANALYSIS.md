@@ -179,6 +179,19 @@ Things that only surfaced once the integration ran against a real account:
   `country` dial code for phone accounts, but the integration only offers email
   sign-in to keep the config flow to two fields. Submitting empty credentials
   returns `code 23`.
+- **Two chat targets, distinguished only by a segment of `msg_content`.**
+  Both `/rtosWechat/appSendDevice` (private) and `/rtosWechat/appSendGroupMsg`
+  (family) take the same body `{token, d_id, imei, msg_type, msg_content}`.
+  The receiver segment is `FFF<imei>` for private and the literal `1` for the
+  family conversation:
+  `"<yyMMddHHmmss>_<sender_u_id>_<receiver>_<text>"`.
+- **Outgoing text is capped at 30 characters**, trimmed silently by the watch.
+- **Receiving is `POST /rtosWechat/getVoiceListPost {token, did}`** returning
+  `chaMsgList` of `{msg_content, msg_type}` with the same envelope. `msg_type`
+  here is the content kind (1 text, 2 emoji, 3 voice); for voice the trailing
+  segment is a duration in seconds and the audio sits in Alibaba OSS. The
+  backend never deletes delivered messages and the app de-duplicates locally on
+  the exact `msg_content` string, so any client must do the same.
 - **Message sends are acknowledged, not confirmed.** The REST response only
   says the backend accepted the request; there is no delivery receipt, and the
   live delivery path is RongCloud IM. Treat a successful send as "queued".
