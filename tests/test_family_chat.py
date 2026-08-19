@@ -107,6 +107,8 @@ async def test_new_message_fires_event(
     assert state.attributes["content"] == "jsem doma"
     assert state.attributes["sender_id"] == "555"
     assert state.attributes["is_group"] is True
+    # Duration only applies to voice notes.
+    assert "duration" not in state.attributes
 
 
 async def test_message_is_not_replayed_on_every_poll(
@@ -188,7 +190,8 @@ async def test_voice_event_carries_duration(
 
     state = hass.states.get(EVENT_ENTITY)
     assert state.attributes["duration"] == 9
-    assert state.attributes["content"] == ""
+    # The audio is never fetched, so there is no text to report.
+    assert "content" not in state.attributes
 
 
 async def test_remembered_ids_are_bounded(

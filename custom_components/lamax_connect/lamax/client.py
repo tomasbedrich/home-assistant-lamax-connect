@@ -254,35 +254,34 @@ class LamaxClient:
 
     # -- messaging --------------------------------------------------------
 
-    async def async_send_message(
-        self, imei: str, d_id: int, message: str, msg_type: int = MSG_TYPE_TEXT
-    ) -> str:
-        """Send a private message to a watch. Returns the text actually sent."""
-        return await self._async_send(
-            "/rtosWechat/appSendDevice", imei, d_id, f"FFF{imei}", message, msg_type
-        )
-
-    async def async_send_group_message(
-        self, imei: str, d_id: int, message: str, msg_type: int = MSG_TYPE_TEXT
-    ) -> str:
-        """Send a message to the family conversation.
+    async def async_send_message(self, imei: str, d_id: int, message: str) -> str:
+        """Send a private text message to a watch.
 
         Returns the text actually sent, which may be truncated.
         """
         return await self._async_send(
-            "/rtosWechat/appSendGroupMsg", imei, d_id, GROUP_RECEIVER, message, msg_type
+            "/rtosWechat/appSendDevice", imei, d_id, f"FFF{imei}", message
+        )
+
+    async def async_send_group_message(self, imei: str, d_id: int, message: str) -> str:
+        """Send a text message to the family conversation.
+
+        Returns the text actually sent, which may be truncated.
+        """
+        return await self._async_send(
+            "/rtosWechat/appSendGroupMsg", imei, d_id, GROUP_RECEIVER, message
         )
 
     async def _async_send(
-        self,
-        path: str,
-        imei: str,
-        d_id: int,
-        receiver: str,
-        message: str,
-        msg_type: int,
+        self, path: str, imei: str, d_id: int, receiver: str, message: str
     ) -> str:
-        """Post a chat message, truncating it the way the watch would."""
+        """Post a text chat message, truncating it the way the watch would.
+
+        Text is the only supported outgoing kind. Emoji and voice exist in the
+        protocol but voice additionally requires uploading the audio to object
+        storage first, so neither is offered rather than letting a caller emit
+        a message the watch cannot render.
+        """
         if self.u_id is None:
             raise LamaxAuthError(CODE_SESSION_EXPIRED, "Not logged in")
 
@@ -301,7 +300,7 @@ class LamaxClient:
             {
                 "d_id": d_id,
                 "imei": imei,
-                "msg_type": msg_type,
+                "msg_type": MSG_TYPE_TEXT,
                 "msg_content": f"{stamp}_{self.u_id}_{receiver}_{text}",
             },
         )

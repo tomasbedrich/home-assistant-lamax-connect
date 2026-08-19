@@ -210,6 +210,12 @@ Things that only surfaced once the integration ran against a real account:
   `getVoiceListPost` only when the mapped `device_type` setting is 2, 3, 4 or
   5, and uses RongCloud history otherwise. Raw `device_type` 26-30 (the tested
   watch reports 27) map to 4, so polling is the correct path here.
+- **Only text is sent.** `msg_type` is fixed to 1 on the wire. Emoji (2) is
+  merely unused, but voice (3) is actively unsafe to expose: the app uploads
+  the `.amr` to Alibaba OSS *first* and only then posts `msg_type: 3`
+  referencing it, so sending 3 without that upload produces a message the
+  watch cannot render. The client therefore takes no message-kind parameter at
+  all rather than guarding one.
 - **Message sends are acknowledged, not confirmed.** The REST response only
   says the backend accepted the request; there is no delivery receipt, and the
   live delivery path is RongCloud IM. Treat a successful send as "queued".

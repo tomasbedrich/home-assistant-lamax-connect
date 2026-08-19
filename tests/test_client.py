@@ -801,3 +801,31 @@ async def test_snapshot_survives_message_failure(client: LamaxClient) -> None:
 
     assert result["111"].messages == ()
     assert result["111"].health is not None
+
+
+def test_sending_is_text_only() -> None:
+    """Neither send method exposes a message kind.
+
+    Voice needs the audio uploaded to object storage first, so offering the
+    parameter would let a caller emit a message the watch cannot render.
+    """
+    import inspect
+
+    for name in ("async_send_message", "async_send_group_message"):
+        params = inspect.signature(getattr(LamaxClient, name)).parameters
+        assert "msg_type" not in params, name
+
+
+async def test_sends_always_declare_text(client: LamaxClient) -> None:
+    """Every outgoing message goes out as msg_type 1."""
+    client.token = "TOK"
+    client.u_id = 42
+    for path, send in (
+        ("appSendDevice", client.async_send_message),
+        ("appSendGroupMsg", client.async_send_group_message),
+    ):
+        with aioresponses() as mocked:
+            mocked.post(f"{BASE}/rtosWechat/{path}", body=encrypted({"code": 0}))
+            await send("860000000000001", 7, "hi")
+            sent = json.loads(decrypt(next(iter(mocked.requests.values()))[0].kwargs["data"]))
+        assert sent["msg_type"] == 1, path

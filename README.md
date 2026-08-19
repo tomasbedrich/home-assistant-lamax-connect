@@ -157,11 +157,14 @@ The event carries type `text`, `emoji` or `voice`, and these attributes:
 
 | Attribute | Meaning |
 | --- | --- |
-| `content` | Message text (empty for voice notes) |
 | `sender_id` | LAMAX user id of the sender |
 | `is_group` | `true` if it went to the family chat |
 | `sent_at` | Watch-local time the message was written |
-| `duration` | Voice note length in seconds, otherwise `null` |
+| `content` | Message text — **text and emoji only** |
+| `duration` | Voice note length in seconds — **voice only** |
+
+`content` and `duration` are mutually exclusive: a voice event carries only
+`duration`, a text or emoji event carries only `content`.
 
 Filter on `is_group` when an automation should only react to one thread:
 
@@ -195,8 +198,18 @@ Two things to know about receiving:
   They are recorded as history, so a restart never replays old conversation
   into your automations.
 
-**Voice notes** report their length but the audio is not downloaded - it lives
-in Alibaba Cloud object storage that this integration does not fetch.
+#### Voice messages are not supported
+
+To be unambiguous about what "voice" means here:
+
+- **You cannot send voice.** Both notify entities send text only.
+- **You cannot listen to voice.** When the watch sends a voice note, the event
+  fires with type `voice` and its `duration` in seconds, and that is all. The
+  audio file lives in Alibaba Cloud object storage that this integration never
+  fetches, so there is nothing to play.
+
+Treat a `voice` event as "a voice note arrived, this many seconds long" - a
+cue to open the LAMAX app, not a replacement for it.
 
 ### About the health readings
 
@@ -283,9 +296,10 @@ script:
   messages are only as fresh as the 5-minute poll.
 - **Messages are capped at 30 weighted characters** by the watch (CJK and
   typographic punctuation count double).
-- **Voice notes cannot be played.** Incoming ones fire an event with their
-  duration, but the audio is not downloaded, and sending voice is not
-  supported.
+- **Voice is not supported.** Sending voice is not possible, and incoming voice
+  notes only report their duration - the audio is never downloaded or played.
+- **Sending is text only.** Emoji messages exist in the protocol but are not
+  offered.
 - **Chat is polled, not pushed.** Expect up to a 5 minute delay on incoming
   messages.
 - **No geofence management.** The watch's own geofences can be read from the API
