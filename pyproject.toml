@@ -1,0 +1,65 @@
+[project]
+name = "home-assistant-lamax-connect"
+version = "0.0.0"
+description = "Home Assistant integration for LAMAX Connect kids' GPS watches"
+readme = "README.md"
+requires-python = ">=3.13"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "A",     # builtins shadowing
+    "ASYNC", # async correctness
+    "B",     # bugbear
+    "C4",    # comprehensions
+    "D",     # docstrings (Home Assistant requires them)
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # import sorting
+    "N",     # naming
+    "PGH",   # blanket noqa / type: ignore
+    "PTH",   # pathlib
+    "RET",   # return simplification
+    "RUF",   # ruff-specific
+    "SIM",   # simplify
+    "T20",   # no print
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+ignore = [
+    "D203", # incompatible with D211
+    "D213", # incompatible with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D103"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=custom_components.lamax_connect --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+# Home Assistant ships its own type stubs; third-party test helpers do not.
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.coverage.run]
+source = ["custom_components/lamax_connect"]
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]

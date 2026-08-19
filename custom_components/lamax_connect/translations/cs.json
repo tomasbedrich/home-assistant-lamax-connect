@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Připojení účtu LAMAX",
+        "description": "Přihlaste se stejnými údaji, které používáte v mobilní aplikaci LAMAX Connect.",
+        "data": {
+          "username": "E-mail nebo telefonní číslo",
+          "password": "Heslo",
+          "login_type": "Přihlásit se pomocí",
+          "country": "Předvolba země"
+        },
+        "data_description": {
+          "username": "E-mailová adresa nebo telefonní číslo registrované v aplikaci LAMAX Connect.",
+          "password": "Heslo k vašemu účtu LAMAX Connect.",
+          "login_type": "Zda je účet registrován e-mailem, nebo telefonním číslem.",
+          "country": "Potřeba pouze při přihlášení telefonem. Předvolba bez úvodního plus, například 420."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opětovné přihlášení k LAMAX Connect",
+        "description": "Heslo pro {username} již není přijímáno. Zadejte aktuální heslo pro obnovení připojení.",
+        "data": {
+          "password": "Heslo"
+        },
+        "data_description": {
+          "password": "Aktuální heslo k vašemu účtu LAMAX Connect."
+        }
+      },
+      "reconfigure": {
+        "title": "Změna nastavení LAMAX Connect",
+        "description": "Upravte údaje účtu použité pro připojení k LAMAX Connect.",
+        "data": {
+          "username": "E-mail nebo telefonní číslo",
+          "password": "Heslo",
+          "login_type": "Přihlásit se pomocí",
+          "country": "Předvolba země"
+        },
+        "data_description": {
+          "username": "E-mailová adresa nebo telefonní číslo registrované v aplikaci LAMAX Connect.",
+          "password": "Heslo k vašemu účtu LAMAX Connect.",
+          "login_type": "Zda je účet registrován e-mailem, nebo telefonním číslem.",
+          "country": "Potřeba pouze při přihlášení telefonem. Předvolba bez úvodního plus, například 420."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nepodařilo se připojit k serverům LAMAX. Zkuste to prosím znovu.",
+      "invalid_auth": "Neplatné přihlašovací údaje. Zkontrolujte jméno, heslo a způsob přihlášení.",
+      "unknown": "Došlo k neočekávané chybě."
+    },
+    "abort": {
+      "already_configured": "Tento účet LAMAX je již nastaven.",
+      "reauth_successful": "Opětovné přihlášení proběhlo úspěšně.",
+      "reconfigure_successful": "Nastavení bylo úspěšně změněno.",
+      "unique_id_mismatch": "Zadané údaje patří k jinému účtu LAMAX, než který se upravuje."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "location_fix": {
+        "name": "Určená poloha"
+      }
+    },
+    "button": {
+      "request_location": {
+        "name": "Zjistit polohu"
+      },
+      "find_watch": {
+        "name": "Najít hodinky"
+      }
+    },
+    "notify": {
+      "message": {
+        "name": "Zpráva"
+      }
+    },
+    "sensor": {
+      "steps": {
+        "name": "Kroky"
+      },
+      "last_seen": {
+        "name": "Naposledy viděno"
+      }
+    }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "LAMAX Connect odmítl uložené přihlašovací údaje. Přihlaste se prosím znovu."
+    },
+    "cannot_connect": {
+      "message": "Nepodařilo se připojit k LAMAX Connect: {error}"
+    },
+    "update_failed": {
+      "message": "Nepodařilo se načíst data z LAMAX Connect: {error}"
+    },
+    "command_failed": {
+      "message": "Hodinky nepřijaly příkaz: {error}"
+    },
+    "send_message_failed": {
+      "message": "Nepodařilo se odeslat zprávu do hodinek: {error}"
+    }
+  }
+}

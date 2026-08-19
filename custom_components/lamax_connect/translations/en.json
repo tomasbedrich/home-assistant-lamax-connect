@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect your LAMAX account",
+        "description": "Sign in with the same credentials you use in the LAMAX Connect mobile app.",
+        "data": {
+          "username": "Email or phone number",
+          "password": "Password",
+          "login_type": "Sign in with",
+          "country": "Country dial code"
+        },
+        "data_description": {
+          "username": "The email address or phone number registered in the LAMAX Connect app.",
+          "password": "The password for your LAMAX Connect account.",
+          "login_type": "Whether your account is registered with an email address or a phone number.",
+          "country": "Only needed for phone sign-in. The dial code without the leading plus, for example 420."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate LAMAX Connect",
+        "description": "The password for {username} is no longer accepted. Enter the current password to reconnect.",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "The current password for your LAMAX Connect account."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure LAMAX Connect",
+        "description": "Update the account details used to connect to LAMAX Connect.",
+        "data": {
+          "username": "Email or phone number",
+          "password": "Password",
+          "login_type": "Sign in with",
+          "country": "Country dial code"
+        },
+        "data_description": {
+          "username": "The email address or phone number registered in the LAMAX Connect app.",
+          "password": "The password for your LAMAX Connect account.",
+          "login_type": "Whether your account is registered with an email address or a phone number.",
+          "country": "Only needed for phone sign-in. The dial code without the leading plus, for example 420."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the LAMAX servers. Please try again.",
+      "invalid_auth": "Invalid credentials. Check the username, password and sign-in method.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This LAMAX account is already set up.",
+      "reauth_successful": "Successfully re-authenticated.",
+      "reconfigure_successful": "Successfully reconfigured.",
+      "unique_id_mismatch": "The credentials belong to a different LAMAX account than the one being reconfigured."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "location_fix": {
+        "name": "Location fix"
+      }
+    },
+    "button": {
+      "request_location": {
+        "name": "Request location"
+      },
+      "find_watch": {
+        "name": "Find watch"
+      }
+    },
+    "notify": {
+      "message": {
+        "name": "Message"
+      }
+    },
+    "sensor": {
+      "steps": {
+        "name": "Steps"
+      },
+      "last_seen": {
+        "name": "Last seen"
+      }
+    }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "LAMAX Connect rejected the stored credentials. Please re-authenticate."
+    },
+    "cannot_connect": {
+      "message": "Failed to connect to LAMAX Connect: {error}"
+    },
+    "update_failed": {
+      "message": "Failed to fetch data from LAMAX Connect: {error}"
+    },
+    "command_failed": {
+      "message": "The watch did not accept the command: {error}"
+    },
+    "send_message_failed": {
+      "message": "Failed to send the message to the watch: {error}"
+    }
+  }
+}

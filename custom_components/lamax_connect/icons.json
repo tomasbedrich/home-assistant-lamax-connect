@@ -1,0 +1,33 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "location_fix": {
+        "default": "mdi:crosshairs-gps",
+        "state": {
+          "off": "mdi:crosshairs-question"
+        }
+      }
+    },
+    "button": {
+      "request_location": {
+        "default": "mdi:crosshairs-gps"
+      },
+      "find_watch": {
+        "default": "mdi:bell-ring"
+      }
+    },
+    "notify": {
+      "message": {
+        "default": "mdi:message-text"
+      }
+    },
+    "sensor": {
+      "steps": {
+        "default": "mdi:shoe-print"
+      },
+      "last_seen": {
+        "default": "mdi:clock-outline"
+      }
+    }
+  }
+}

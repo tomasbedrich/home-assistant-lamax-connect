@@ -1,0 +1,14 @@
+name: Feature request
+description: Suggest support for another watch function
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like to see?
+      description: |
+        The LAMAX backend exposes about 100 endpoints; only a subset is
+        implemented. If you know which app screen provides the feature, say so -
+        it makes it much easier to find the matching endpoint.
+    validations:
+      required: true

@@ -1,0 +1,220 @@
+# LAMAX Connect for Home Assistant
+
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+[![Validate](https://github.com/tomasbedrich/home-assistant-lamax-connect/actions/workflows/validate.yml/badge.svg)](https://github.com/tomasbedrich/home-assistant-lamax-connect/actions/workflows/validate.yml)
+
+Track and message LAMAX kids' GPS watches from Home Assistant.
+
+This is an **unofficial** integration, reverse engineered from the LAMAX Connect
+Android app. It is not affiliated with or endorsed by LAMAX Electronics.
+
+## Features
+
+- **Location tracking** - each watch appears as a `device_tracker` with GPS
+  coordinates and accuracy, so it works with zones, maps and presence
+  automations.
+- **Messaging** - each watch gets a `notify` entity, so you can send it a text
+  message from any automation or script.
+- **Battery, steps and last-seen sensors** for each watch.
+- **Buttons** to ask the watch for a fresh GPS fix, or to make it ring so it can
+  be found.
+- **Multiple watches** on one account are supported, including watches bound
+  after the integration was set up.
+
+## Supported devices
+
+Any watch that pairs with the **LAMAX Connect** mobile app and is bound to your
+account. Developed and tested against a LAMAX watch reporting device type 27
+(firmware `L36W_A_S90_WC_VE_V001_*`).
+
+Watches sold under the same white-label platform in other regions (elem6,
+Kinder Handee) talk to the same backend and are likely to work, but are
+untested.
+
+**Not supported:** LAMAX action cameras and dashcams - those use a completely
+different, local protocol.
+
+## Installation
+
+### HACS (recommended)
+
+1. In HACS, open the three-dot menu and choose **Custom repositories**.
+2. Add `https://github.com/tomasbedrich/home-assistant-lamax-connect` with
+   category **Integration**.
+3. Search for **LAMAX Connect**, download it, and restart Home Assistant.
+
+### Manual
+
+Copy `custom_components/lamax_connect/` into your Home Assistant
+`config/custom_components/` directory and restart Home Assistant.
+
+## Configuration
+
+Go to **Settings → Devices & Services → Add Integration** and search for
+**LAMAX Connect**.
+
+| Field | Description |
+| --- | --- |
+| Email or phone number | The same login you use in the LAMAX Connect app |
+| Password | The password for that account |
+| Sign in with | Whether the account is registered by email or by phone |
+| Country dial code | Phone sign-in only, without the leading `+` (e.g. `420`) |
+
+Sign in with the **same account you use in the app**. The LAMAX backend does not
+offer app passwords or API tokens, so the integration signs in exactly as the
+app does. Only one Home Assistant config entry per LAMAX account is allowed.
+
+> [!NOTE]
+> Using the same account in Home Assistant and on your phone at the same time is
+> fine - the backend permits multiple concurrent sessions.
+
+### Removing the integration
+
+Go to **Settings → Devices & Services → LAMAX Connect**, open the three-dot menu
+on the entry and choose **Delete**. Nothing is left behind on the LAMAX side;
+the integration only reads from and sends commands to the account.
+
+## Entities
+
+For each watch (`<watch>` is the watch name from the app):
+
+| Entity | Description |
+| --- | --- |
+| `device_tracker.<watch>` | GPS position and accuracy |
+| `notify.<watch>_message` | Send a text message to the watch |
+| `sensor.<watch>_battery` | Battery percentage |
+| `sensor.<watch>_steps` | Step counter |
+| `sensor.<watch>_last_seen` | When the watch last reported a position |
+| `binary_sensor.<watch>_location_fix` | Whether a position is currently known |
+| `button.<watch>_request_location` | Ask the watch for a fresh GPS fix |
+| `button.<watch>_find_watch` | Make the watch ring so it can be found |
+
+## How data is updated
+
+The integration polls the LAMAX cloud every **5 minutes** and reads the last
+position the watch reported on its own schedule. The watch itself decides how
+often it uploads a fix (configurable in the LAMAX app), so a position can be
+older than the polling interval - check `sensor.<watch>_last_seen`.
+
+To force an immediate fix, press `button.<watch>_request_location`. This asks
+the watch to report right away; the new position appears at the next poll,
+usually within a minute. This is a silent background request - it does not alert
+the child.
+
+## Examples
+
+Send a message when the watch arrives at school:
+
+```yaml
+automation:
+  - alias: "Notify when Junior arrives at school"
+    triggers:
+      - trigger: zone
+        entity_id: device_tracker.junior
+        zone: zone.school
+        event: enter
+    actions:
+      - action: notify.send_message
+        target:
+          entity_id: notify.junior_message
+        data:
+          message: "Have a nice day at school!"
+```
+
+Warn when the watch battery gets low:
+
+```yaml
+automation:
+  - alias: "Watch battery low"
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.junior_battery
+        below: 20
+    actions:
+      - action: notify.persistent_notification
+        data:
+          message: "Junior's watch battery is below 20%."
+```
+
+Ask for a fresh position before leaving to pick them up:
+
+```yaml
+script:
+  locate_junior:
+    sequence:
+      - action: button.press
+        target:
+          entity_id: button.junior_request_location
+      - delay: "00:01:00"
+```
+
+## Known limitations
+
+- **Polling only.** The LAMAX app receives live push over RongCloud IM; this
+  integration does not implement that protocol, so positions and incoming
+  messages are only as fresh as the 5-minute poll.
+- **Sending only.** Messages sent *from* the watch are not exposed as entities.
+- **No voice messages.** Only text is supported; voice notes go through Alibaba
+  Cloud OSS and are not implemented.
+- **No geofence management.** The watch's own geofences can be read from the API
+  but are not exposed - use Home Assistant zones with the `device_tracker`
+  instead, which is more flexible.
+- **No health metrics.** Heart rate, temperature and sleep endpoints exist in
+  the API but are not implemented.
+- **Unofficial API.** LAMAX can change or break the backend at any time.
+
+## Troubleshooting
+
+**"Invalid credentials" when setting up** - confirm the login works in the LAMAX
+Connect app, and that **Sign in with** matches how the account is registered. For
+phone accounts the country dial code is required, without the leading `+`.
+
+**The integration asks me to re-authenticate** - the backend invalidated the
+session. Enter your password again when Home Assistant prompts. If it recurs
+often, check whether the password was changed in the app.
+
+**Position is stale or missing** - the watch reports on its own schedule and
+needs signal. Check `sensor.<watch>_last_seen`, press
+`button.<watch>_request_location`, and confirm the watch shows a recent position
+in the LAMAX app. If the app is also stale, the watch is offline, not the
+integration.
+
+**Entity names are wrong** - entity names come from the watch names set in the
+LAMAX app. Rename the watch there, then reload the integration.
+
+### Debug logging
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.lamax_connect: debug
+```
+
+## Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.test.txt
+pytest            # tests with coverage
+ruff check .      # lint
+ruff format .     # format
+mypy custom_components/lamax_connect
+```
+
+The API client lives in `custom_components/lamax_connect/lamax/` and has no
+Home Assistant imports, so it can be split into a standalone PyPI package later
+without changes. Until then it ships inside the integration so that changes
+only need one version bump.
+
+Releases are cut by publishing a GitHub release; the workflow stamps the tag
+into `manifest.json` and attaches the ZIP that HACS downloads. The `version` in
+git is a `0.0.0` placeholder on purpose.
+
+## Credits
+
+See [ANALYSIS.md](ANALYSIS.md) for how the API was reverse engineered.
+
+## License
+
+[MIT](LICENSE)
