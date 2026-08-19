@@ -1,2 +1,6 @@
 pytest-homeassistant-custom-component==0.13.316
 aioresponses>=0.7.9
+# Pinned so a new release cannot fail CI on formatting alone; dependabot
+# proposes bumps as reviewable PRs.
+ruff==0.16.3
+mypy==2.3.1

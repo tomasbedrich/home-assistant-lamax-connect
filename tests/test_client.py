@@ -597,9 +597,7 @@ async def test_snapshot_gathers_location_and_health(client: LamaxClient) -> None
             body=encrypted(
                 {
                     "code": 0,
-                    "chaMsgList": [
-                        {"msg_content": "260819143000_555_1_ahoj", "msg_type": 1}
-                    ],
+                    "chaMsgList": [{"msg_content": "260819143000_555_1_ahoj", "msg_type": 1}],
                 }
             ),
         )
