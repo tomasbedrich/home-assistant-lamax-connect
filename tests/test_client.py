@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import json
 
 import aiohttp
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 import pytest
+from yarl import URL
 
 from custom_components.lamax_connect.lamax import (
     LamaxAuthError,
@@ -150,7 +152,6 @@ async def test_get_location(client: LamaxClient) -> None:
                     "lng": "14.437800",
                     "Electricity": 100,
                     "accuracy": 10,
-                    "step": "1234",
                     "uploadtime": 1786950041000,
                 }
             ),
@@ -160,7 +161,6 @@ async def test_get_location(client: LamaxClient) -> None:
     assert location.latitude == pytest.approx(50.07553)
     assert location.longitude == pytest.approx(14.437800)
     assert location.battery == 100
-    assert location.steps == 1234
     assert location.updated_at == datetime.fromtimestamp(1786950041, tz=UTC)
 
 
@@ -201,7 +201,7 @@ async def test_send_message_requires_login(client: LamaxClient) -> None:
         await client.async_send_message("869123456789012", 7, "hi")
 
 
-async def test_devices_with_location_survives_location_failure(
+async def test_snapshots_survive_location_failure(
     client: LamaxClient,
 ) -> None:
     """A watch whose position lookup fails is still returned, without a location."""
@@ -224,13 +224,13 @@ async def test_devices_with_location_survives_location_failure(
             body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0"}),
         )
         mocked.post(f"{BASE}/location/getlast/searchPost", body=encrypted({"code": 557}))
-        result = await client.async_get_devices_with_location()
+        result = await client.async_get_snapshots()
 
     assert set(result) == {"111", "222"}
-    assert sum(location is None for _, location in result.values()) == 1
+    assert sum(snap.location is None for snap in result.values()) == 1
 
 
-async def test_devices_with_location_propagates_auth_error(
+async def test_snapshots_propagate_auth_error(
     client: LamaxClient,
 ) -> None:
     """An expired session during a position lookup is not swallowed."""
@@ -242,7 +242,7 @@ async def test_devices_with_location_propagates_auth_error(
         )
         mocked.post(f"{BASE}/location/getlast/searchPost", body=encrypted({"code": 25}))
         with pytest.raises(LamaxAuthError):
-            await client.async_get_devices_with_location()
+            await client.async_get_snapshots()
 
 
 async def test_timeout_raises_connection_error(client: LamaxClient) -> None:
@@ -280,7 +280,7 @@ async def test_no_devices_skips_location_lookups(client: LamaxClient) -> None:
             f"{BASE}/watchAppUser/getbindDeviceListPost",
             body=encrypted({"code": 0, "deviceList": []}),
         )
-        assert await client.async_get_devices_with_location() == {}
+        assert await client.async_get_snapshots() == {}
 
 
 async def test_find_and_locate_commands(client: LamaxClient) -> None:
@@ -359,3 +359,194 @@ async def test_geofences_parsed(client: LamaxClient) -> None:
 async def test_host_property(client: LamaxClient) -> None:
     """The client exposes the backend host it talks to."""
     assert client.host == "elem6.wisskys.com"
+
+
+async def test_steps_come_from_dedicated_endpoint(client: LamaxClient) -> None:
+    """Steps are read from devicestep, not the always-zero location field."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/app/getTodayStepPost",
+            body=encrypted({"code": 0, "devicestep": "9474"}),
+        )
+        assert await client.async_get_steps(1, "860000000000001") == 9474
+
+
+async def test_steps_absent(client: LamaxClient) -> None:
+    """A watch that reports no step data yields None rather than zero."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/app/getTodayStepPost", body=encrypted({"code": 0}))
+        assert await client.async_get_steps(1, "860000000000001") is None
+
+
+async def test_expired_session_is_recovered_transparently(client: LamaxClient) -> None:
+    """Code 25 triggers a re-login and a retry, invisibly to the caller.
+
+    The backend only allows one session per account, so the phone app logging
+    in silently invalidates our token. That must self-heal.
+    """
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T1", "u_id": 42}))
+        await client.login("user@example.com", "pw")
+
+        mocked.post(f"{BASE}/watchAppUser/getbindDeviceListPost", body=encrypted({"code": 25}))
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T2", "u_id": 42}))
+        mocked.post(
+            f"{BASE}/watchAppUser/getbindDeviceListPost",
+            body=encrypted({"code": 0, "deviceList": [{"imei": "1", "name": "A"}]}),
+        )
+        devices = await client.async_get_devices()
+
+    assert len(devices) == 1
+    assert client.token == "T2"
+
+
+async def test_expired_session_retries_only_once(client: LamaxClient) -> None:
+    """A persistently rejected session surfaces instead of looping forever."""
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T1", "u_id": 42}))
+        await client.login("user@example.com", "pw")
+
+        mocked.post(f"{BASE}/watchAppUser/getbindDeviceListPost", body=encrypted({"code": 25}))
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T2", "u_id": 42}))
+        mocked.post(f"{BASE}/watchAppUser/getbindDeviceListPost", body=encrypted({"code": 25}))
+        with pytest.raises(LamaxAuthError):
+            await client.async_get_devices()
+
+
+async def test_relogin_with_bad_credentials_surfaces(client: LamaxClient) -> None:
+    """If the password itself is now wrong, escalate instead of retrying."""
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T1", "u_id": 42}))
+        await client.login("user@example.com", "pw")
+
+        mocked.post(f"{BASE}/watchAppUser/getbindDeviceListPost", body=encrypted({"code": 25}))
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 24}))
+        with pytest.raises(LamaxAuthError) as err:
+            await client.async_get_devices()
+
+    assert err.value.code == 24
+
+
+async def test_concurrent_expiry_relogins_once(client: LamaxClient) -> None:
+    """Parallel requests hitting an expired session share a single re-login.
+
+    Without the shared lock each in-flight request would re-authenticate, and
+    since the backend allows one session per account they would invalidate each
+    other in a loop.
+    """
+    logins = 0
+
+    def login_cb(url: URL, **kwargs: object) -> CallbackResult:
+        nonlocal logins
+        logins += 1
+        return CallbackResult(body=encrypted({"code": 0, "token": "T2", "u_id": 42}))
+
+    def location_cb(url: URL, **kwargs: object) -> CallbackResult:
+        sent = json.loads(decrypt(kwargs["data"]))  # type: ignore[arg-type]
+        if sent["token"] == "T1":  # stale session
+            return CallbackResult(body=encrypted({"code": 25}))
+        return CallbackResult(body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0"}))
+
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T1", "u_id": 42}))
+        await client.login("user@example.com", "pw")
+
+        mocked.post(f"{BASE}/user/login", callback=login_cb, repeat=True)
+        mocked.post(f"{BASE}/location/getlast/searchPost", callback=location_cb, repeat=True)
+        results = await asyncio.gather(*(client.async_get_location(i) for i in range(5)))
+
+    assert len(results) == 5
+    assert all(r.latitude == pytest.approx(1.0) for r in results)
+    assert logins == 1
+    assert client.token == "T2"
+
+
+async def test_send_message_rejects_non_zero_code(client: LamaxClient) -> None:
+    """Only code 0 counts as sent, so a queued/rejected send is not silent."""
+    client.token = "TOK"
+    client.u_id = 42
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/rtosWechat/appSendDevice", body=encrypted({"code": 4}))
+        with pytest.raises(LamaxError) as err:
+            await client.async_send_message("860000000000001", 7, "hi")
+
+    assert err.value.code == 4
+
+
+async def test_snapshot_survives_steps_failure(client: LamaxClient) -> None:
+    """A watch whose step lookup fails still reports its position."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/watchAppUser/getbindDeviceListPost",
+            body=encrypted({"code": 0, "deviceList": [{"imei": "111", "name": "A", "d_id": 1}]}),
+        )
+        mocked.post(
+            f"{BASE}/location/getlast/searchPost",
+            body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0"}),
+        )
+        mocked.post(f"{BASE}/app/getTodayStepPost", body=encrypted({"code": 557}))
+        result = await client.async_get_snapshots()
+
+    assert result["111"].steps is None
+    assert result["111"].location is not None
+
+
+async def test_snapshot_survives_whole_device_failure(client: LamaxClient) -> None:
+    """If every per-watch lookup fails, the watch is still listed."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/watchAppUser/getbindDeviceListPost",
+            body=encrypted({"code": 0, "deviceList": [{"imei": "111", "name": "A", "d_id": 1}]}),
+        )
+        mocked.post(
+            f"{BASE}/location/getlast/searchPost",
+            exception=aiohttp.ClientError("down"),
+        )
+        mocked.post(f"{BASE}/app/getTodayStepPost", exception=aiohttp.ClientError("down"))
+        result = await client.async_get_snapshots()
+
+    assert result["111"].location is None
+    assert result["111"].steps is None
+
+
+async def test_relogin_skipped_when_another_task_refreshed(
+    client: LamaxClient,
+) -> None:
+    """The generation guard stops a second re-login for the same expiry."""
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/user/login", body=encrypted({"code": 0, "token": "T1", "u_id": 42}))
+        await client.login("user@example.com", "pw")
+
+        # Pretend another task already re-authenticated after this generation.
+        stale_generation = client._session_generation - 1
+        await client._async_relogin(stale_generation)
+
+    assert client.token == "T1"
+
+
+async def test_snapshot_gathers_location_and_steps(client: LamaxClient) -> None:
+    """A healthy poll returns both the position and the step count."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/watchAppUser/getbindDeviceListPost",
+            body=encrypted({"code": 0, "deviceList": [{"imei": "111", "name": "A", "d_id": 1}]}),
+        )
+        mocked.post(
+            f"{BASE}/location/getlast/searchPost",
+            body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0", "Electricity": 55}),
+        )
+        mocked.post(
+            f"{BASE}/app/getTodayStepPost",
+            body=encrypted({"code": 0, "devicestep": "9474"}),
+        )
+        result = await client.async_get_snapshots()
+
+    snapshot = result["111"]
+    assert snapshot.steps == 9474
+    assert snapshot.location is not None
+    assert snapshot.location.battery == 55

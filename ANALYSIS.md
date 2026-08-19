@@ -139,6 +139,32 @@ this so a Home Assistant config entry can trigger reauth.
   **not** chat — they're admin/system notification feeds (binding
   requests, SOS, geofence alerts, firmware updates).
 
+## Backend behaviours learned in production
+
+Things that only surfaced once the integration ran against a real account:
+
+- **One session per account.** The backend invalidates the previous token on
+  every login, so Home Assistant and the phone app log each other out. The
+  stale client gets `code 25` on its next request. The client now stores its
+  credentials and transparently re-logins + retries once on `code 25`,
+  serialising concurrent re-logins behind a lock and a generation counter so a
+  burst of parallel requests triggers exactly one login.
+- **Result codes are per-endpoint, not global.** An earlier version accepted
+  `code 4` as success everywhere, generalised from the Android message-send
+  handler. That was wrong and could mask failures, so the default is now
+  strictly `code 0`, with `code 2` additionally allowed for geofence listing
+  ("none configured"). `code 24` is bad credentials, `code 25` is an expired
+  session.
+- **Step counts do not come from the location response.** The `step` field of
+  `/location/getlast/searchPost` is always `"0"`. The real counter is
+  `devicestep` from `POST /app/getTodayStepPost {did, imei}`, which also
+  returns `device_upload_time`. `/app/getStepPost` additionally returns the
+  configured daily goal as `step`, and `/heath/getLastAllByDeviceLocalTimePost`
+  exposes heart rate, blood oxygen, calories and distance (not implemented).
+- **Message sends are acknowledged, not confirmed.** The REST response only
+  says the backend accepted the request; there is no delivery receipt, and the
+  live delivery path is RongCloud IM. Treat a successful send as "queued".
+
 ## Deliverables
 
 - `custom_components/lamax_connect/lamax/` - the API client: crypto layer,

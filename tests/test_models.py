@@ -19,18 +19,16 @@ def test_location_from_empty_payload() -> None:
     assert location.longitude is None
     assert location.battery is None
     assert location.accuracy == 0
-    assert location.steps == 0
     assert location.updated_at is None
 
 
 @pytest.mark.parametrize("bad", ["", "n/a", None, {}])
 def test_location_tolerates_unparsable_coordinates(bad: object) -> None:
     """Junk in the coordinate fields is treated as 'unknown'."""
-    location = Location.from_json({"lat": bad, "lng": bad, "step": bad})
+    location = Location.from_json({"lat": bad, "lng": bad})
 
     assert location.latitude is None
     assert location.longitude is None
-    assert location.steps == 0
 
 
 def test_device_falls_back_to_imei_for_name() -> None:

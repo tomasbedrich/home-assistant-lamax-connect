@@ -71,7 +71,7 @@ async def test_setup_connection_failure_retries(
     [
         ("device_tracker.junior", "not_home"),
         ("sensor.junior_battery", "100"),
-        ("sensor.junior_steps", "1234"),
+        ("sensor.junior_steps", "9474"),
         ("binary_sensor.junior_location_fix", "on"),
     ],
 )

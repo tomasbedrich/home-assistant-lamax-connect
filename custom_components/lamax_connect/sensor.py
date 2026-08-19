@@ -16,8 +16,9 @@ from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import LamaxConfigEntry, LamaxCoordinator, LamaxDeviceData
+from .coordinator import LamaxConfigEntry, LamaxCoordinator
 from .entity import LamaxEntity, async_setup_lamax_platform
+from .lamax import DeviceSnapshot
 
 PARALLEL_UPDATES = 0
 
@@ -26,7 +27,7 @@ PARALLEL_UPDATES = 0
 class LamaxSensorEntityDescription(SensorEntityDescription):
     """Describes a LAMAX Connect sensor."""
 
-    value_fn: Callable[[LamaxDeviceData], int | float | datetime | None]
+    value_fn: Callable[[DeviceSnapshot], int | float | datetime | None]
 
 
 SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
@@ -43,7 +44,7 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         translation_key="steps",
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="steps",
-        value_fn=lambda data: data.location.steps if data.location else None,
+        value_fn=lambda data: data.steps,
     ),
     LamaxSensorEntityDescription(
         key="last_seen",

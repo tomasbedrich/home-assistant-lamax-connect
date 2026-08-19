@@ -11,6 +11,8 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
 )
 from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
+from custom_components.lamax_connect.lamax import DeviceSnapshot
+
 from .conftest import TEST_IMEI, TEST_PASSWORD, TEST_USERNAME
 from .test_init import setup_entry
 
@@ -53,7 +55,7 @@ async def test_diagnostics_without_location(
     device,
 ) -> None:
     """A watch with no position still produces valid diagnostics."""
-    mock_client.async_get_devices_with_location.return_value = {device.imei: (device, None)}
+    mock_client.async_get_snapshots.return_value = {device.imei: DeviceSnapshot(device, None, None)}
     await setup_entry(hass, mock_config_entry)
 
     result = await get_diagnostics_for_config_entry(hass, hass_client, mock_config_entry)

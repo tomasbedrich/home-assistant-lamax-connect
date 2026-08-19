@@ -72,7 +72,6 @@ class Location:
     battery: int | None
     accuracy: int
     location_type: int
-    steps: int
     description: str
     updated_at: datetime | None
 
@@ -87,7 +86,6 @@ class Location:
             battery=_as_int(battery) if battery is not None else None,
             accuracy=_as_int(data.get("accuracy")),
             location_type=_as_int(data.get("locationType")),
-            steps=_as_int(data.get("step")),
             description=str(data.get("desc", "")),
             updated_at=(datetime.fromtimestamp(uploadtime / 1000, tz=UTC) if uploadtime else None),
         )
@@ -140,3 +138,12 @@ class TrackPoint:
             location_type=_as_int(data.get("locationType")),
             recorded_at=(datetime.fromtimestamp(uploadtime / 1000, tz=UTC) if uploadtime else None),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceSnapshot:
+    """Everything one poll gathers about a single watch."""
+
+    device: Device
+    location: Location | None
+    steps: int | None

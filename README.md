@@ -64,15 +64,45 @@ Sign in with the **same account you use in the app**. The LAMAX backend does not
 offer app passwords or API tokens, so the integration signs in exactly as the
 app does. Only one Home Assistant config entry per LAMAX account is allowed.
 
-> [!NOTE]
-> Using the same account in Home Assistant and on your phone at the same time is
-> fine - the backend permits multiple concurrent sessions.
+> [!IMPORTANT]
+> **The LAMAX backend allows only one active session per account.** Signing in
+> from Home Assistant logs you out of the LAMAX mobile app, and signing back in
+> on the phone invalidates Home Assistant's session. See
+> [One session per account](#one-session-per-account) below.
 
 ### Removing the integration
 
 Go to **Settings → Devices & Services → LAMAX Connect**, open the three-dot menu
 on the entry and choose **Delete**. Nothing is left behind on the LAMAX side;
 the integration only reads from and sends commands to the account.
+
+## One session per account
+
+This is the most important thing to know before using this integration.
+
+The LAMAX backend keeps **one session per account**. Whichever client logged in
+most recently owns the session; the other one is silently logged out and its
+next request fails with `code 25`.
+
+In practice:
+
+- When Home Assistant polls, the LAMAX app on your phone gets logged out.
+- When you sign back in on your phone, Home Assistant's session dies.
+
+The integration handles its own side automatically: on `code 25` it
+re-authenticates and retries the request transparently, so you should not see
+errors or gaps in history. It only asks you to re-authenticate if the password
+itself stops working. **But it cannot stop this from logging your phone out** -
+that is the backend's behaviour, not something a client can work around.
+
+**If you want to keep using the phone app normally, create a second LAMAX
+account and invite it to the watch, then use that account for Home Assistant.**
+One account per client is the only real fix.
+
+A side effect worth understanding: because Home Assistant re-authenticates
+whenever it finds itself logged out, the two clients will keep taking the
+session from each other for as long as both are active. Home Assistant will
+keep working; your phone app will keep needing to log back in.
 
 ## Entities
 
@@ -83,7 +113,7 @@ For each watch (`<watch>` is the watch name from the app):
 | `device_tracker.<watch>` | GPS position and accuracy |
 | `notify.<watch>_message` | Send a text message to the watch |
 | `sensor.<watch>_battery` | Battery percentage |
-| `sensor.<watch>_steps` | Step counter |
+| `sensor.<watch>_steps` | Today's step count as reported by the watch |
 | `sensor.<watch>_last_seen` | When the watch last reported a position |
 | `binary_sensor.<watch>_location_fix` | Whether a position is currently known |
 | `button.<watch>_request_location` | Ask the watch for a fresh GPS fix |
@@ -150,6 +180,8 @@ script:
 
 ## Known limitations
 
+- **One session per account.** Home Assistant and the LAMAX phone app log each
+  other out. See [One session per account](#one-session-per-account).
 - **Polling only.** The LAMAX app receives live push over RongCloud IM; this
   integration does not implement that protocol, so positions and incoming
   messages are only as fresh as the 5-minute poll.
@@ -169,9 +201,18 @@ script:
 Connect app, and that **Sign in with** matches how the account is registered. For
 phone accounts the country dial code is required, without the leading `+`.
 
-**The integration asks me to re-authenticate** - the backend invalidated the
-session. Enter your password again when Home Assistant prompts. If it recurs
-often, check whether the password was changed in the app.
+**My phone keeps getting logged out of the LAMAX app** - expected; only one
+session per account exists. Use a separate LAMAX account for Home Assistant.
+See [One session per account](#one-session-per-account).
+
+**The integration asks me to re-authenticate** - this now only happens when the
+password itself is rejected (`code 24`); ordinary session loss (`code 25`) is
+recovered automatically. Check whether the password was changed in the app.
+
+**A message reported success but never arrived** - the integration treats only
+`code 0` as sent, so a silent failure should now surface as an error. If you
+still see this, enable debug logging and open an issue with the logged result
+code for `/rtosWechat/appSendDevice`.
 
 **Position is stale or missing** - the watch reports on its own schedule and
 needs signal. Check `sensor.<watch>_last_seen`, press

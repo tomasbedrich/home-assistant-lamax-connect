@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import timedelta
 import logging
 
@@ -12,22 +11,14 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
-from .lamax import Device, LamaxAuthError, LamaxClient, LamaxError, Location
+from .lamax import DeviceSnapshot, LamaxAuthError, LamaxClient, LamaxError
 
 _LOGGER = logging.getLogger(__name__)
 
 type LamaxConfigEntry = ConfigEntry[LamaxCoordinator]
 
 
-@dataclass(frozen=True, slots=True)
-class LamaxDeviceData:
-    """Everything known about one watch after an update."""
-
-    device: Device
-    location: Location | None
-
-
-class LamaxCoordinator(DataUpdateCoordinator[dict[str, LamaxDeviceData]]):
+class LamaxCoordinator(DataUpdateCoordinator[dict[str, DeviceSnapshot]]):
     """Fetches the bound watches and their last known positions."""
 
     config_entry: LamaxConfigEntry
@@ -45,10 +36,10 @@ class LamaxCoordinator(DataUpdateCoordinator[dict[str, LamaxDeviceData]]):
         )
         self.client = client
 
-    async def _async_update_data(self) -> dict[str, LamaxDeviceData]:
-        """Fetch devices and positions from the LAMAX backend."""
+    async def _async_update_data(self) -> dict[str, DeviceSnapshot]:
+        """Fetch devices, positions and step counts from the LAMAX backend."""
         try:
-            devices = await self.client.async_get_devices_with_location()
+            return await self.client.async_get_snapshots()
         except LamaxAuthError as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN, translation_key="auth_failed"
@@ -59,8 +50,3 @@ class LamaxCoordinator(DataUpdateCoordinator[dict[str, LamaxDeviceData]]):
                 translation_key="update_failed",
                 translation_placeholders={"error": str(err)},
             ) from err
-
-        return {
-            imei: LamaxDeviceData(device=device, location=location)
-            for imei, (device, location) in devices.items()
-        }

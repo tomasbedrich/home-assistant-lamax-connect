@@ -11,7 +11,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER
-from .coordinator import LamaxConfigEntry, LamaxCoordinator, LamaxDeviceData
+from .coordinator import LamaxConfigEntry, LamaxCoordinator
+from .lamax import DeviceSnapshot
 
 
 class LamaxEntity(CoordinatorEntity[LamaxCoordinator]):
@@ -34,7 +35,7 @@ class LamaxEntity(CoordinatorEntity[LamaxCoordinator]):
         )
 
     @property
-    def device_data(self) -> LamaxDeviceData:
+    def device_data(self) -> DeviceSnapshot:
         """Current data for this watch."""
         return self.coordinator.data[self._imei]
 

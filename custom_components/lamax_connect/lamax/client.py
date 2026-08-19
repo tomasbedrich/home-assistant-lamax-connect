@@ -17,7 +17,7 @@ import aiohttp
 
 from .crypto import decrypt, encrypt
 from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
-from .models import MSG_TYPE_TEXT, Device, GeoFence, Location, TrackPoint
+from .models import MSG_TYPE_TEXT, Device, DeviceSnapshot, GeoFence, Location, TrackPoint
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +32,6 @@ _TIMEOUT: Final = aiohttp.ClientTimeout(total=30)
 # Backend result codes. The API reuses this numeric space per endpoint, so
 # success is declared per call rather than globally.
 CODE_OK: Final = 0
-CODE_OK_ALT: Final = 4
 CODE_NO_DATA: Final = 2  # e.g. "no geofences configured" - not an error
 CODE_BAD_CREDENTIALS: Final = 24
 CODE_SESSION_EXPIRED: Final = 25
@@ -57,6 +56,11 @@ class LamaxClient:
         self._language_type = language_type
         self.token: str | None = None
         self.u_id: int | None = None
+        self._credentials: tuple[str, str, str, str | None] | None = None
+        self._login_lock = asyncio.Lock()
+        # Bumped on every successful login so concurrent requests that race a
+        # session expiry only trigger a single re-login between them.
+        self._session_generation = 0
 
     @property
     def host(self) -> str:
@@ -68,13 +72,46 @@ class LamaxClient:
         path: str,
         body: dict[str, Any] | None = None,
         *,
-        ok_codes: tuple[int, ...] = (CODE_OK, CODE_OK_ALT),
+        ok_codes: tuple[int, ...] = (CODE_OK,),
     ) -> dict[str, Any]:
         """POST an encrypted JSON body and return the decrypted response.
 
         ``ok_codes`` declares which ``code`` values mean success for this
-        endpoint.
+        endpoint - the API reuses the same numeric space for different meanings
+        per endpoint, so only codes actually observed as success are accepted.
+
+        The backend allows only one session per account, so a login elsewhere
+        (typically the phone app) silently invalidates our token. That surfaces
+        as ``code 25``; we re-login once and retry rather than failing.
         """
+        generation = self._session_generation
+        try:
+            return await self._post_once(path, body, ok_codes=ok_codes)
+        except LamaxAuthError as err:
+            if err.code != CODE_SESSION_EXPIRED or self._credentials is None:
+                raise
+            _LOGGER.debug("Session expired on %s, re-authenticating", path)
+            await self._async_relogin(generation)
+            return await self._post_once(path, body, ok_codes=ok_codes)
+
+    async def _async_relogin(self, generation: int) -> None:
+        """Re-establish the session, unless another task already did."""
+        async with self._login_lock:
+            if self._session_generation != generation:
+                _LOGGER.debug("Session already refreshed by another request")
+                return
+            assert self._credentials is not None
+            username, password, login_type, country = self._credentials
+            await self.login(username, password, login_type, country)
+
+    async def _post_once(
+        self,
+        path: str,
+        body: dict[str, Any] | None = None,
+        *,
+        ok_codes: tuple[int, ...] = (CODE_OK,),
+    ) -> dict[str, Any]:
+        """Perform a single request without retrying."""
         payload: dict[str, Any] = {**(body or {}), "version": _APP_SECRET}
         if self.token is not None:
             payload.setdefault("token", self.token)
@@ -100,6 +137,7 @@ class LamaxClient:
             raise LamaxConnectionError(f"Malformed JSON from {path}") from err
 
         code = int(result.get("code", -1))
+        _LOGGER.debug("%s -> code %s", path, code)
         if code in (CODE_BAD_CREDENTIALS, CODE_SESSION_EXPIRED):
             raise LamaxAuthError(code, result.get("msg", ""))
         if code not in ok_codes:
@@ -129,9 +167,11 @@ class LamaxClient:
         }
         if country:
             body["country"] = country
-        result = await self._post("/user/login", body)
+        result = await self._post_once("/user/login", body)
         self.token = str(result["token"])
         self.u_id = int(result["u_id"])
+        self._credentials = (username, password, login_type, country)
+        self._session_generation += 1
         _LOGGER.debug("Logged in as u_id %s", self.u_id)
 
     # -- devices ----------------------------------------------------------
@@ -160,6 +200,16 @@ class LamaxClient:
         result = await self._post("/location/getlast/searchPost", {"did": d_id})
         return Location.from_json(result)
 
+    async def async_get_steps(self, d_id: int, imei: str) -> int | None:
+        """Return today's step count for a watch.
+
+        Note the ``step`` field of the location response is unrelated and is
+        always "0"; the real counter is ``devicestep`` from this endpoint.
+        """
+        result = await self._post("/app/getTodayStepPost", {"did": d_id, "imei": imei})
+        devicestep = result.get("devicestep")
+        return int(devicestep) if devicestep not in (None, "") else None
+
     async def async_get_track_history(
         self, d_id: int, start: datetime, end: datetime
     ) -> list[TrackPoint]:
@@ -184,7 +234,7 @@ class LamaxClient:
         result = await self._post(
             "/security/getwatchfencePost",
             {"did": d_id},
-            ok_codes=(CODE_OK, CODE_NO_DATA, CODE_OK_ALT),
+            ok_codes=(CODE_OK, CODE_NO_DATA),
         )
         return [GeoFence.from_json(item) for item in result.get("GeoFenceList", [])]
 
@@ -209,27 +259,43 @@ class LamaxClient:
 
     # -- convenience ------------------------------------------------------
 
-    async def async_get_devices_with_location(self) -> dict[str, tuple[Device, Location | None]]:
-        """Return every bound watch together with its last known position.
+    async def async_get_snapshots(self) -> dict[str, DeviceSnapshot]:
+        """Return every bound watch with its last position and step count.
 
-        Locations are fetched concurrently; a watch whose position lookup fails
-        is still returned, with ``None`` for the location.
+        Per-watch lookups run concurrently. A watch whose position or step
+        lookup fails is still returned, with ``None`` for the missing part, so
+        one flaky reading never hides the whole account.
         """
         devices = await self.async_get_devices()
         if not devices:
             return {}
 
-        locations = await asyncio.gather(
-            *(self.async_get_location(device.d_id) for device in devices),
+        # _async_snapshot absorbs per-reading failures itself and only lets an
+        # expired session through, so anything raised here is worth surfacing.
+        snapshots = await asyncio.gather(*(self._async_snapshot(device) for device in devices))
+        return {snapshot.device.imei: snapshot for snapshot in snapshots}
+
+    async def _async_snapshot(self, device: Device) -> DeviceSnapshot:
+        """Gather the per-watch readings, tolerating individual failures."""
+        location_result, steps_result = await asyncio.gather(
+            self.async_get_location(device.d_id),
+            self.async_get_steps(device.d_id, device.imei),
             return_exceptions=True,
         )
-        result: dict[str, tuple[Device, Location | None]] = {}
-        for device, location in zip(devices, locations, strict=True):
-            if isinstance(location, BaseException):
-                if isinstance(location, LamaxAuthError):
-                    raise location
-                _LOGGER.debug("No location for %s: %s", device.imei, location)
-                result[device.imei] = (device, None)
-            else:
-                result[device.imei] = (device, location)
-        return result
+        for value in (location_result, steps_result):
+            if isinstance(value, LamaxAuthError):
+                raise value
+
+        location: Location | None = None
+        if isinstance(location_result, BaseException):
+            _LOGGER.debug("No location for %s: %s", device.imei, location_result)
+        else:
+            location = location_result
+
+        steps: int | None = None
+        if isinstance(steps_result, BaseException):
+            _LOGGER.debug("No steps for %s: %s", device.imei, steps_result)
+        else:
+            steps = steps_result
+
+        return DeviceSnapshot(device, location, steps)

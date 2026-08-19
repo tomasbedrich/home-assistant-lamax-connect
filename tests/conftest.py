@@ -15,7 +15,7 @@ from custom_components.lamax_connect.const import (
     CONF_LOGIN_TYPE,
     DOMAIN,
 )
-from custom_components.lamax_connect.lamax import Device, Location
+from custom_components.lamax_connect.lamax import Device, DeviceSnapshot, Location
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
@@ -54,7 +54,6 @@ def location() -> Location:
             "Electricity": 100,
             "accuracy": 10,
             "locationType": 0,
-            "step": "1234",
             "desc": "",
             "uploadtime": 1786950041000,
         }
@@ -89,8 +88,8 @@ def mock_client(device: Device, location: Location) -> Generator[AsyncMock]:
         client.token = "test-token"
         client.u_id = 2000000000000002
         client.login = AsyncMock(return_value=None)
-        client.async_get_devices_with_location = AsyncMock(
-            return_value={device.imei: (device, location)}
+        client.async_get_snapshots = AsyncMock(
+            return_value={device.imei: DeviceSnapshot(device, location, 9474)}
         )
         client.async_send_message = AsyncMock(return_value=None)
         client.async_find_device = AsyncMock(return_value=None)
