@@ -47,6 +47,9 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.location.battery if data.location else None,
+        # Battery rides along with the position report, so it is exactly as old
+        # as the last fix - which can be days if the watch has not reported.
+        measured_at_fn=lambda data: data.location.updated_at if data.location else None,
     ),
     LamaxSensorEntityDescription(
         key="steps",

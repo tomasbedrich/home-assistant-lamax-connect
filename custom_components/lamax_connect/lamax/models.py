@@ -62,6 +62,10 @@ def truncate_message(text: str, limit: int = MAX_MESSAGE_LENGTH) -> str:
 # (a private message addresses the watch as "FFF<imei>" instead).
 GROUP_RECEIVER = "1"
 
+# The watch reports 255 in the battery field while charging rather than a
+# percentage (LocationFragment shows a charging icon for it).
+BATTERY_CHARGING = 255
+
 
 type JsonDict = dict[str, Any]
 
@@ -131,6 +135,7 @@ class Location:
     latitude: float | None
     longitude: float | None
     battery: int | None
+    charging: bool
     accuracy: int
     location_type: int
     description: str
@@ -140,11 +145,15 @@ class Location:
     def from_json(cls, data: JsonDict) -> Location:
         """Build from a /location/getlast/searchPost response."""
         uploadtime = _as_int(data.get("uploadtime"), 0)
-        battery = data.get("Electricity")
+        raw_battery = data.get("Electricity")
+        level = _as_int(raw_battery) if raw_battery is not None else None
+        charging = level == BATTERY_CHARGING
         return cls(
             latitude=_as_float(data.get("lat")),
             longitude=_as_float(data.get("lng")),
-            battery=_as_int(battery) if battery is not None else None,
+            # While charging the field is a sentinel, not a percentage.
+            battery=None if charging else level,
+            charging=charging,
             accuracy=_as_int(data.get("accuracy")),
             location_type=_as_int(data.get("locationType")),
             description=str(data.get("desc", "")),

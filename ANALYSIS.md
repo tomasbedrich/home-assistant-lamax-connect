@@ -175,6 +175,15 @@ Things that only surfaced once the integration ran against a real account:
   "never measured" rather than a real reading. `/app/getTodayStepPost` and
   `/app/getStepPost` also return `devicestep`; the latter adds the configured
   daily goal as `step`.
+- **Battery lives in the location response and shares its staleness.**
+  `Electricity` comes back from `/location/getlast/searchPost`, so it is only
+  as fresh as the last position report - which can lag by days even while
+  steps keep updating. The app keeps its figure current by calling
+  `/controllerDevice/ask/localtionPost` whenever the map screen opens
+  (`LocationFragment` issues it twice), then re-reading `getlast`.
+- **`Electricity == 255` means charging, not 255%.** `LocationFragment`
+  branches on 255 to show a charging icon before any percentage comparison.
+  Reporting it verbatim would give Home Assistant a 255% battery.
 - **Login is email-only in practice.** The API accepts `type: "2"` with a
   `country` dial code for phone accounts, but the integration only offers email
   sign-in to keep the config flow to two fields. Submitting empty credentials

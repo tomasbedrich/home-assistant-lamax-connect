@@ -13,6 +13,7 @@ from .client import (
 )
 from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
 from .models import (
+    BATTERY_CHARGING,
     GROUP_RECEIVER,
     MAX_MESSAGE_LENGTH,
     MSG_KINDS,
@@ -32,6 +33,7 @@ from .models import (
 
 __all__ = [
     "ALTERNATE_HOST",
+    "BATTERY_CHARGING",
     "DEFAULT_HOST",
     "GROUP_RECEIVER",
     "LOGIN_TYPE_EMAIL",

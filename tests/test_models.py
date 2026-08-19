@@ -56,3 +56,30 @@ def test_trackpoint_without_timestamp() -> None:
 
     assert point.recorded_at is None
     assert point.latitude == pytest.approx(1.0)
+
+
+def test_battery_255_means_charging_not_255_percent() -> None:
+    """The watch sends 255 in the battery field while charging.
+
+    Reporting that verbatim would give Home Assistant a 255% battery.
+    """
+    location = Location.from_json({"Electricity": 255})
+
+    assert location.charging is True
+    assert location.battery is None
+
+
+def test_normal_battery_is_not_charging() -> None:
+    """A real percentage is reported as-is."""
+    location = Location.from_json({"Electricity": 20})
+
+    assert location.charging is False
+    assert location.battery == 20
+
+
+def test_missing_battery_is_neither() -> None:
+    """No battery field means unknown, not discharging at 0%."""
+    location = Location.from_json({})
+
+    assert location.battery is None
+    assert location.charging is False

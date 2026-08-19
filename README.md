@@ -117,7 +117,7 @@ For each watch (`<watch>` is the watch name from the app):
 | `notify.<watch>_message` | Send a private message to the watch |
 | `notify.<watch>_family_chat` | Post to the shared family conversation |
 | `event.<watch>_message_received` | Fires when the watch sends a message |
-| `sensor.<watch>_battery` | Battery percentage |
+| `sensor.<watch>_battery` | Battery percentage as of the last position report |
 | `sensor.<watch>_steps` | Today's step count as reported by the watch |
 | `sensor.<watch>_calories` | Calories burned today |
 | `sensor.<watch>_distance` | Distance covered today |
@@ -225,8 +225,33 @@ the entity's `last_changed` if the age matters:
 
 Steps, calories and distance reset daily on the watch.
 | `binary_sensor.<watch>_location_fix` | Whether a position is currently known |
+| `binary_sensor.<watch>_charging` | Whether the watch is on the charger |
 | `button.<watch>_request_location` | Ask the watch for a fresh GPS fix |
 | `button.<watch>_find_watch` | Make the watch ring so it can be found |
+
+### Why the battery can disagree with the app
+
+**The battery reading is only as fresh as the last position report.** The
+backend sends the battery level inside the location response, so if the watch
+has not reported its position for a day, the battery figure is a day old too -
+even though steps and health keep updating.
+
+The `sensor.<watch>_battery` entity carries a `measured_at` attribute with the
+time that reading was actually captured. If it disagrees with the LAMAX app,
+compare that timestamp first:
+
+```yaml
+{{ state_attr('sensor.junior_battery', 'measured_at') }}
+```
+
+The app refreshes it by asking the watch for a fresh position whenever you open
+the map. Home Assistant deliberately does not do that on every poll, because it
+wakes the watch's radio and costs the very battery you are measuring. To force
+an update, press `button.<watch>_request_location` and wait for the next poll.
+
+While the watch is on its charger the backend reports a sentinel instead of a
+percentage, so `sensor.<watch>_battery` becomes unknown and
+`binary_sensor.<watch>_charging` turns on.
 
 ## How data is updated
 
@@ -310,6 +335,8 @@ script:
   on this hardware. Open an issue if your watch measures them.
 - **Health readings are on-demand, not continuous.** See
   [About the health readings](#about-the-health-readings).
+- **Battery is tied to the position report**, not polled independently. See
+  [Why the battery can disagree with the app](#why-the-battery-can-disagree-with-the-app).
 - **Unofficial API.** LAMAX can change or break the backend at any time.
 
 ## Troubleshooting
@@ -336,6 +363,10 @@ needs signal. Check `sensor.<watch>_last_seen`, press
 `button.<watch>_request_location`, and confirm the watch shows a recent position
 in the LAMAX app. If the app is also stale, the watch is offline, not the
 integration.
+
+**Battery does not match the LAMAX app** - the reading is as old as the last
+position report; check the sensor's `measured_at` attribute. See
+[Why the battery can disagree with the app](#why-the-battery-can-disagree-with-the-app).
 
 **Heart rate or blood oxygen is empty or looks old** - expected; the watch only
 records these when a measurement is taken on the device. Check the sensor's

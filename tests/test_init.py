@@ -121,8 +121,11 @@ async def test_health_sensors_expose_measurement_time(
         datetime.fromtimestamp(1785747669, tz=UTC).isoformat()
     )
 
-    # Battery is a live reading and has no measurement timestamp.
-    assert "measured_at" not in hass.states.get("sensor.junior_battery").attributes
+    # Battery rides along with the position report, so it is dated too.
+    battery = hass.states.get("sensor.junior_battery")
+    assert battery.attributes["measured_at"] == (
+        datetime.fromtimestamp(1786950041, tz=UTC).isoformat()
+    )
 
 
 async def test_missing_health_leaves_sensors_unknown(
@@ -146,3 +149,34 @@ async def test_missing_health_leaves_sensors_unknown(
         "sensor.junior_blood_oxygen",
     ):
         assert hass.states.get(entity_id).state == "unknown", entity_id
+
+
+async def test_charging_sentinel_surfaces_as_charging(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    device,
+    health,
+    messages,
+) -> None:
+    """A charging watch reports charging, not a 255% battery."""
+    from custom_components.lamax_connect.lamax import DeviceSnapshot, Location
+
+    charging = Location.from_json({"lat": "50.07553", "lng": "14.4378", "Electricity": 255})
+    mock_client.async_get_snapshots.return_value = {
+        device.imei: DeviceSnapshot(device, charging, health, messages)
+    }
+    await setup_entry(hass, mock_config_entry)
+
+    assert hass.states.get("binary_sensor.junior_charging").state == "on"
+    assert hass.states.get("sensor.junior_battery").state == "unknown"
+
+
+async def test_not_charging_reports_percentage(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """A discharging watch reports its level and charging off."""
+    await setup_entry(hass, mock_config_entry)
+
+    assert hass.states.get("binary_sensor.junior_charging").state == "off"
+    assert hass.states.get("sensor.junior_battery").state == "100"
