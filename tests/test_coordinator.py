@@ -74,6 +74,7 @@ async def test_watch_added_later_creates_entities(
     freezer: FrozenDateTimeFactory,
     device: Device,
     location,
+    health,
 ) -> None:
     """A watch bound after setup shows up without reloading the entry."""
     await setup_entry(hass, mock_config_entry)
@@ -83,8 +84,8 @@ async def test_watch_added_later_creates_entities(
         {"imei": "860000000000002", "name": "Second", "d_id": 999, "device_type": 27}
     )
     mock_client.async_get_snapshots.return_value = {
-        device.imei: DeviceSnapshot(device, location, 9474),
-        second.imei: DeviceSnapshot(second, location, 12),
+        device.imei: DeviceSnapshot(device, location, health),
+        second.imei: DeviceSnapshot(second, location, health),
     }
     await _advance(hass, freezer)
 

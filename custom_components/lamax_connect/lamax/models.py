@@ -27,6 +27,20 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _as_epoch_ms(value: Any) -> datetime | None:
+    """Parse an epoch-milliseconds field, which may arrive as str or int."""
+    try:
+        ms = int(value)
+    except (TypeError, ValueError):
+        return None
+    return datetime.fromtimestamp(ms / 1000, tz=UTC) if ms > 0 else None
+
+
+def _positive_or_none(value: int | None) -> int | None:
+    """Treat 0 as "never measured" - 0 bpm and 0% SpO2 are not real readings."""
+    return value if value else None
+
+
 def _as_int(value: Any, default: int = 0) -> int:
     """Coerce a loosely-typed backend value to an int, falling back to default."""
     try:
@@ -141,9 +155,45 @@ class TrackPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class Health:
+    """Activity and health readings from a watch.
+
+    Heart rate and blood oxygen are only recorded when a measurement is taken
+    on the watch, so they can be days or weeks old - always pair them with
+    their ``*_at`` timestamp. Body temperature and blood pressure exist in the
+    payload but read as 0 on the tested hardware, so they are not surfaced.
+    """
+
+    steps: int | None
+    steps_at: datetime | None
+    calories: int | None
+    distance_km: float | None
+    heart_rate: int | None
+    heart_rate_at: datetime | None
+    blood_oxygen: int | None
+    blood_oxygen_at: datetime | None
+
+    @classmethod
+    def from_json(cls, data: JsonDict) -> Health:
+        """Build from a /heath/getLastAllByDeviceLocalTimePost response."""
+        devicestep = data.get("devicestep")
+        calories = data.get("calories")
+        return cls(
+            steps=_as_int(devicestep) if devicestep not in (None, "") else None,
+            steps_at=_as_epoch_ms(data.get("step_time")),
+            calories=_as_int(calories) if calories not in (None, "") else None,
+            distance_km=_as_float(data.get("km")),
+            heart_rate=_positive_or_none(_as_int(data.get("heart_rate"))),
+            heart_rate_at=_as_epoch_ms(data.get("heart_rate_system_time")),
+            blood_oxygen=_positive_or_none(_as_int(data.get("blood_oxygen"))),
+            blood_oxygen_at=_as_epoch_ms(data.get("blood_oxygen_system_time")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceSnapshot:
     """Everything one poll gathers about a single watch."""
 
     device: Device
     location: Location | None
-    steps: int | None
+    health: Health | None

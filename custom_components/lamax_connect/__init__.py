@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_COUNTRY, CONF_LOGIN_TYPE, DOMAIN
+from .const import DOMAIN
 from .coordinator import LamaxConfigEntry, LamaxCoordinator
 from .lamax import LamaxAuthError, LamaxClient, LamaxError
 
@@ -24,12 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LamaxConfigEntry) -> boo
     """Set up LAMAX Connect from a config entry."""
     client = LamaxClient(async_get_clientsession(hass))
     try:
-        await client.login(
-            entry.data[CONF_USERNAME],
-            entry.data[CONF_PASSWORD],
-            entry.data.get(CONF_LOGIN_TYPE, "1"),
-            entry.data.get(CONF_COUNTRY),
-        )
+        await client.login(entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
     except LamaxAuthError as err:
         raise ConfigEntryAuthFailed(
             translation_domain=DOMAIN, translation_key="auth_failed"

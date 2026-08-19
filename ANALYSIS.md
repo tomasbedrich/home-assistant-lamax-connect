@@ -156,11 +156,29 @@ Things that only surfaced once the integration ran against a real account:
   ("none configured"). `code 24` is bad credentials, `code 25` is an expired
   session.
 - **Step counts do not come from the location response.** The `step` field of
-  `/location/getlast/searchPost` is always `"0"`. The real counter is
-  `devicestep` from `POST /app/getTodayStepPost {did, imei}`, which also
-  returns `device_upload_time`. `/app/getStepPost` additionally returns the
-  configured daily goal as `step`, and `/heath/getLastAllByDeviceLocalTimePost`
-  exposes heart rate, blood oxygen, calories and distance (not implemented).
+  `/location/getlast/searchPost` is always `"0"`. Steps, calories, distance,
+  heart rate and blood oxygen all come from one call,
+  `POST /heath/getLastAllByDeviceLocalTimePost {did, imei}`:
+
+  ```json
+  {"code": 0, "devicestep": "9684", "step_time": 1787145590236,
+   "calories": 387, "km": "6.78",
+   "heart_rate": 93, "heart_rate_system_time": "1785747669000",
+   "blood_oxygen": 99, "blood_oxygen_system_time": "1784733205000",
+   "body_temperature": "0", "blood_pressure": "0,0"}
+  ```
+
+  Heart rate and blood oxygen are only captured when a measurement is taken on
+  the watch, so they are frequently stale - the `*_system_time` fields (epoch
+  ms, sometimes as strings) say when. `body_temperature` and `blood_pressure`
+  read `0` on the tested hardware and appear unsupported, so `0` is treated as
+  "never measured" rather than a real reading. `/app/getTodayStepPost` and
+  `/app/getStepPost` also return `devicestep`; the latter adds the configured
+  daily goal as `step`.
+- **Login is email-only in practice.** The API accepts `type: "2"` with a
+  `country` dial code for phone accounts, but the integration only offers email
+  sign-in to keep the config flow to two fields. Submitting empty credentials
+  returns `code 23`.
 - **Message sends are acknowledged, not confirmed.** The REST response only
   says the backend accepted the request; there is no delivery receipt, and the
   live delivery path is RongCloud IM. Treat a successful send as "queued".

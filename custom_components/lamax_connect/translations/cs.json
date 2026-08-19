@@ -3,18 +3,14 @@
     "step": {
       "user": {
         "title": "Připojení účtu LAMAX",
-        "description": "Přihlaste se stejnými údaji, které používáte v mobilní aplikaci LAMAX Connect.",
+        "description": "Přihlaste se stejným e-mailem a heslem, které používáte v mobilní aplikaci LAMAX Connect.",
         "data": {
-          "username": "E-mail nebo telefonní číslo",
-          "password": "Heslo",
-          "login_type": "Přihlásit se pomocí",
-          "country": "Předvolba země"
+          "username": "E-mail",
+          "password": "Heslo"
         },
         "data_description": {
-          "username": "E-mailová adresa nebo telefonní číslo registrované v aplikaci LAMAX Connect.",
-          "password": "Heslo k vašemu účtu LAMAX Connect.",
-          "login_type": "Zda je účet registrován e-mailem, nebo telefonním číslem.",
-          "country": "Potřeba pouze při přihlášení telefonem. Předvolba bez úvodního plus, například 420."
+          "username": "E-mailová adresa registrovaná v aplikaci LAMAX Connect.",
+          "password": "Heslo k vašemu účtu LAMAX Connect."
         }
       },
       "reauth_confirm": {
@@ -29,18 +25,14 @@
       },
       "reconfigure": {
         "title": "Změna nastavení LAMAX Connect",
-        "description": "Upravte údaje účtu použité pro připojení k LAMAX Connect.",
+        "description": "Upravte účet použitý pro připojení k LAMAX Connect.",
         "data": {
-          "username": "E-mail nebo telefonní číslo",
-          "password": "Heslo",
-          "login_type": "Přihlásit se pomocí",
-          "country": "Předvolba země"
+          "username": "E-mail",
+          "password": "Heslo"
         },
         "data_description": {
-          "username": "E-mailová adresa nebo telefonní číslo registrované v aplikaci LAMAX Connect.",
-          "password": "Heslo k vašemu účtu LAMAX Connect.",
-          "login_type": "Zda je účet registrován e-mailem, nebo telefonním číslem.",
-          "country": "Potřeba pouze při přihlášení telefonem. Předvolba bez úvodního plus, například 420."
+          "username": "E-mailová adresa registrovaná v aplikaci LAMAX Connect.",
+          "password": "Heslo k vašemu účtu LAMAX Connect."
         }
       }
     },
@@ -76,11 +68,23 @@
       }
     },
     "sensor": {
-      "steps": {
-        "name": "Kroky"
+      "blood_oxygen": {
+        "name": "Okysličení krve"
+      },
+      "calories": {
+        "name": "Kalorie"
+      },
+      "distance": {
+        "name": "Vzdálenost"
+      },
+      "heart_rate": {
+        "name": "Tepová frekvence"
       },
       "last_seen": {
         "name": "Naposledy viděno"
+      },
+      "steps": {
+        "name": "Kroky"
       }
     }
   },

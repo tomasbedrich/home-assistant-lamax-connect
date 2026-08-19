@@ -3,18 +3,14 @@
     "step": {
       "user": {
         "title": "Connect your LAMAX account",
-        "description": "Sign in with the same credentials you use in the LAMAX Connect mobile app.",
+        "description": "Sign in with the same email and password you use in the LAMAX Connect mobile app.",
         "data": {
-          "username": "Email or phone number",
-          "password": "Password",
-          "login_type": "Sign in with",
-          "country": "Country dial code"
+          "username": "Email",
+          "password": "Password"
         },
         "data_description": {
-          "username": "The email address or phone number registered in the LAMAX Connect app.",
-          "password": "The password for your LAMAX Connect account.",
-          "login_type": "Whether your account is registered with an email address or a phone number.",
-          "country": "Only needed for phone sign-in. The dial code without the leading plus, for example 420."
+          "username": "The email address registered in the LAMAX Connect app.",
+          "password": "The password for your LAMAX Connect account."
         }
       },
       "reauth_confirm": {
@@ -29,18 +25,14 @@
       },
       "reconfigure": {
         "title": "Reconfigure LAMAX Connect",
-        "description": "Update the account details used to connect to LAMAX Connect.",
+        "description": "Update the account used to connect to LAMAX Connect.",
         "data": {
-          "username": "Email or phone number",
-          "password": "Password",
-          "login_type": "Sign in with",
-          "country": "Country dial code"
+          "username": "Email",
+          "password": "Password"
         },
         "data_description": {
-          "username": "The email address or phone number registered in the LAMAX Connect app.",
-          "password": "The password for your LAMAX Connect account.",
-          "login_type": "Whether your account is registered with an email address or a phone number.",
-          "country": "Only needed for phone sign-in. The dial code without the leading plus, for example 420."
+          "username": "The email address registered in the LAMAX Connect app.",
+          "password": "The password for your LAMAX Connect account."
         }
       }
     },
@@ -76,11 +68,23 @@
       }
     },
     "sensor": {
-      "steps": {
-        "name": "Steps"
+      "blood_oxygen": {
+        "name": "Blood oxygen"
+      },
+      "calories": {
+        "name": "Calories"
+      },
+      "distance": {
+        "name": "Distance"
+      },
+      "heart_rate": {
+        "name": "Heart rate"
       },
       "last_seen": {
         "name": "Last seen"
+      },
+      "steps": {
+        "name": "Steps"
       }
     }
   },

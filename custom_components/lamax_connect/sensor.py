@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfLength
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -22,12 +23,20 @@ from .lamax import DeviceSnapshot
 
 PARALLEL_UPDATES = 0
 
+# Not Home Assistant constants - there is no device class for heart rate or
+# for dietary calories.
+BEATS_PER_MINUTE = "bpm"
+KILOCALORIES = "kcal"
+
 
 @dataclass(frozen=True, kw_only=True)
 class LamaxSensorEntityDescription(SensorEntityDescription):
     """Describes a LAMAX Connect sensor."""
 
     value_fn: Callable[[DeviceSnapshot], int | float | datetime | None]
+    # Health readings are only captured when the child uses the watch, so they
+    # can be days old. Expose when the reading was actually taken.
+    measured_at_fn: Callable[[DeviceSnapshot], datetime | None] | None = None
 
 
 SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
@@ -44,7 +53,42 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         translation_key="steps",
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="steps",
-        value_fn=lambda data: data.steps,
+        value_fn=lambda data: data.health.steps if data.health else None,
+        measured_at_fn=lambda data: data.health.steps_at if data.health else None,
+    ),
+    LamaxSensorEntityDescription(
+        key="calories",
+        translation_key="calories",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=KILOCALORIES,
+        value_fn=lambda data: data.health.calories if data.health else None,
+        measured_at_fn=lambda data: data.health.steps_at if data.health else None,
+    ),
+    LamaxSensorEntityDescription(
+        key="distance",
+        translation_key="distance",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        suggested_display_precision=2,
+        value_fn=lambda data: data.health.distance_km if data.health else None,
+        measured_at_fn=lambda data: data.health.steps_at if data.health else None,
+    ),
+    LamaxSensorEntityDescription(
+        key="heart_rate",
+        translation_key="heart_rate",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=BEATS_PER_MINUTE,
+        value_fn=lambda data: data.health.heart_rate if data.health else None,
+        measured_at_fn=lambda data: data.health.heart_rate_at if data.health else None,
+    ),
+    LamaxSensorEntityDescription(
+        key="blood_oxygen",
+        translation_key="blood_oxygen",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda data: data.health.blood_oxygen if data.health else None,
+        measured_at_fn=lambda data: data.health.blood_oxygen_at if data.health else None,
     ),
     LamaxSensorEntityDescription(
         key="last_seen",
@@ -90,3 +134,11 @@ class LamaxSensor(LamaxEntity, SensorEntity):
     def native_value(self) -> int | float | datetime | None:
         """Return the current value."""
         return self.entity_description.value_fn(self.device_data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose when the reading was captured, for readings that go stale."""
+        if self.entity_description.measured_at_fn is None:
+            return None
+        measured_at = self.entity_description.measured_at_fn(self.device_data)
+        return {"measured_at": measured_at.isoformat() if measured_at else None}

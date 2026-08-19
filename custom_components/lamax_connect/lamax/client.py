@@ -17,7 +17,15 @@ import aiohttp
 
 from .crypto import decrypt, encrypt
 from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
-from .models import MSG_TYPE_TEXT, Device, DeviceSnapshot, GeoFence, Location, TrackPoint
+from .models import (
+    MSG_TYPE_TEXT,
+    Device,
+    DeviceSnapshot,
+    GeoFence,
+    Health,
+    Location,
+    TrackPoint,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -200,15 +208,17 @@ class LamaxClient:
         result = await self._post("/location/getlast/searchPost", {"did": d_id})
         return Location.from_json(result)
 
-    async def async_get_steps(self, d_id: int, imei: str) -> int | None:
-        """Return today's step count for a watch.
+    async def async_get_health(self, d_id: int, imei: str) -> Health:
+        """Return the latest activity and health readings for a watch.
 
-        Note the ``step`` field of the location response is unrelated and is
-        always "0"; the real counter is ``devicestep`` from this endpoint.
+        This one endpoint carries steps, calories, distance, heart rate and
+        blood oxygen. Note the ``step`` field of the *location* response is
+        unrelated and always "0" - the real counter is ``devicestep`` here.
         """
-        result = await self._post("/app/getTodayStepPost", {"did": d_id, "imei": imei})
-        devicestep = result.get("devicestep")
-        return int(devicestep) if devicestep not in (None, "") else None
+        result = await self._post(
+            "/heath/getLastAllByDeviceLocalTimePost", {"did": d_id, "imei": imei}
+        )
+        return Health.from_json(result)
 
     async def async_get_track_history(
         self, d_id: int, start: datetime, end: datetime
@@ -262,7 +272,7 @@ class LamaxClient:
     async def async_get_snapshots(self) -> dict[str, DeviceSnapshot]:
         """Return every bound watch with its last position and step count.
 
-        Per-watch lookups run concurrently. A watch whose position or step
+        Per-watch lookups run concurrently. A watch whose position or health
         lookup fails is still returned, with ``None`` for the missing part, so
         one flaky reading never hides the whole account.
         """
@@ -277,12 +287,12 @@ class LamaxClient:
 
     async def _async_snapshot(self, device: Device) -> DeviceSnapshot:
         """Gather the per-watch readings, tolerating individual failures."""
-        location_result, steps_result = await asyncio.gather(
+        location_result, health_result = await asyncio.gather(
             self.async_get_location(device.d_id),
-            self.async_get_steps(device.d_id, device.imei),
+            self.async_get_health(device.d_id, device.imei),
             return_exceptions=True,
         )
-        for value in (location_result, steps_result):
+        for value in (location_result, health_result):
             if isinstance(value, LamaxAuthError):
                 raise value
 
@@ -292,10 +302,10 @@ class LamaxClient:
         else:
             location = location_result
 
-        steps: int | None = None
-        if isinstance(steps_result, BaseException):
-            _LOGGER.debug("No steps for %s: %s", device.imei, steps_result)
+        health: Health | None = None
+        if isinstance(health_result, BaseException):
+            _LOGGER.debug("No health data for %s: %s", device.imei, health_result)
         else:
-            steps = steps_result
+            health = health_result
 
-        return DeviceSnapshot(device, location, steps)
+        return DeviceSnapshot(device, location, health)

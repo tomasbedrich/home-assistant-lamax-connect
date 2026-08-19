@@ -361,23 +361,65 @@ async def test_host_property(client: LamaxClient) -> None:
     assert client.host == "elem6.wisskys.com"
 
 
-async def test_steps_come_from_dedicated_endpoint(client: LamaxClient) -> None:
-    """Steps are read from devicestep, not the always-zero location field."""
+async def test_health_readings_parsed(client: LamaxClient) -> None:
+    """Steps come from devicestep, not the always-zero location step field."""
     client.token = "TOK"
     with aioresponses() as mocked:
         mocked.post(
-            f"{BASE}/app/getTodayStepPost",
-            body=encrypted({"code": 0, "devicestep": "9474"}),
+            f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
+            body=encrypted(
+                {
+                    "code": 0,
+                    "devicestep": "9474",
+                    "step_time": 1787145590236,
+                    "calories": 387,
+                    "km": "6.78",
+                    "heart_rate": 93,
+                    "heart_rate_system_time": "1785747669000",
+                    "blood_oxygen": 99,
+                    "blood_oxygen_system_time": "1784733205000",
+                }
+            ),
         )
-        assert await client.async_get_steps(1, "860000000000001") == 9474
+        health = await client.async_get_health(1, "860000000000001")
+
+    assert health.steps == 9474
+    assert health.calories == 387
+    assert health.distance_km == pytest.approx(6.78)
+    assert health.heart_rate == 93
+    assert health.blood_oxygen == 99
+    assert health.heart_rate_at == datetime.fromtimestamp(1785747669, tz=UTC)
+    assert health.blood_oxygen_at == datetime.fromtimestamp(1784733205, tz=UTC)
 
 
-async def test_steps_absent(client: LamaxClient) -> None:
-    """A watch that reports no step data yields None rather than zero."""
+async def test_health_absent(client: LamaxClient) -> None:
+    """A watch that reports nothing yields None values rather than zeroes.
+
+    The tested hardware reports 0 for unsupported metrics, which must not be
+    shown as a real reading of 0 bpm or 0%.
+    """
     client.token = "TOK"
     with aioresponses() as mocked:
-        mocked.post(f"{BASE}/app/getTodayStepPost", body=encrypted({"code": 0}))
-        assert await client.async_get_steps(1, "860000000000001") is None
+        mocked.post(
+            f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
+            body=encrypted(
+                {
+                    "code": 0,
+                    "heart_rate": 0,
+                    "blood_oxygen": 0,
+                    "body_temperature": "0",
+                    "blood_pressure": "0,0",
+                    "heart_rate_system_time": "0",
+                }
+            ),
+        )
+        health = await client.async_get_health(1, "860000000000001")
+
+    assert health.steps is None
+    assert health.calories is None
+    assert health.heart_rate is None
+    assert health.blood_oxygen is None
+    assert health.heart_rate_at is None
 
 
 async def test_expired_session_is_recovered_transparently(client: LamaxClient) -> None:
@@ -475,8 +517,8 @@ async def test_send_message_rejects_non_zero_code(client: LamaxClient) -> None:
     assert err.value.code == 4
 
 
-async def test_snapshot_survives_steps_failure(client: LamaxClient) -> None:
-    """A watch whose step lookup fails still reports its position."""
+async def test_snapshot_survives_health_failure(client: LamaxClient) -> None:
+    """A watch whose health lookup fails still reports its position."""
     client.token = "TOK"
     with aioresponses() as mocked:
         mocked.post(
@@ -487,10 +529,13 @@ async def test_snapshot_survives_steps_failure(client: LamaxClient) -> None:
             f"{BASE}/location/getlast/searchPost",
             body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0"}),
         )
-        mocked.post(f"{BASE}/app/getTodayStepPost", body=encrypted({"code": 557}))
+        mocked.post(
+            f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
+            body=encrypted({"code": 557}),
+        )
         result = await client.async_get_snapshots()
 
-    assert result["111"].steps is None
+    assert result["111"].health is None
     assert result["111"].location is not None
 
 
@@ -506,11 +551,14 @@ async def test_snapshot_survives_whole_device_failure(client: LamaxClient) -> No
             f"{BASE}/location/getlast/searchPost",
             exception=aiohttp.ClientError("down"),
         )
-        mocked.post(f"{BASE}/app/getTodayStepPost", exception=aiohttp.ClientError("down"))
+        mocked.post(
+            f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
+            exception=aiohttp.ClientError("down"),
+        )
         result = await client.async_get_snapshots()
 
     assert result["111"].location is None
-    assert result["111"].steps is None
+    assert result["111"].health is None
 
 
 async def test_relogin_skipped_when_another_task_refreshed(
@@ -528,8 +576,8 @@ async def test_relogin_skipped_when_another_task_refreshed(
     assert client.token == "T1"
 
 
-async def test_snapshot_gathers_location_and_steps(client: LamaxClient) -> None:
-    """A healthy poll returns both the position and the step count."""
+async def test_snapshot_gathers_location_and_health(client: LamaxClient) -> None:
+    """A healthy poll returns both the position and the health readings."""
     client.token = "TOK"
     with aioresponses() as mocked:
         mocked.post(
@@ -541,12 +589,14 @@ async def test_snapshot_gathers_location_and_steps(client: LamaxClient) -> None:
             body=encrypted({"code": 0, "lat": "1.0", "lng": "2.0", "Electricity": 55}),
         )
         mocked.post(
-            f"{BASE}/app/getTodayStepPost",
-            body=encrypted({"code": 0, "devicestep": "9474"}),
+            f"{BASE}/heath/getLastAllByDeviceLocalTimePost",
+            body=encrypted({"code": 0, "devicestep": "9474", "heart_rate": 93}),
         )
         result = await client.async_get_snapshots()
 
     snapshot = result["111"]
-    assert snapshot.steps == 9474
+    assert snapshot.health is not None
+    assert snapshot.health.steps == 9474
+    assert snapshot.health.heart_rate == 93
     assert snapshot.location is not None
     assert snapshot.location.battery == 55

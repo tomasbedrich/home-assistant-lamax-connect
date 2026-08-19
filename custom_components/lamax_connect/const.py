@@ -6,9 +6,6 @@ from typing import Final
 
 DOMAIN: Final = "lamax_connect"
 
-CONF_LOGIN_TYPE: Final = "login_type"
-CONF_COUNTRY: Final = "country"
-
 MANUFACTURER: Final = "LAMAX"
 
 # The backend is cloud polling and the watches report on their own schedule,

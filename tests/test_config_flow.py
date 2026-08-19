@@ -11,7 +11,7 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.lamax_connect.const import CONF_LOGIN_TYPE, DOMAIN
+from custom_components.lamax_connect.const import DOMAIN
 from custom_components.lamax_connect.lamax import (
     LamaxAuthError,
     LamaxConnectionError,
@@ -19,11 +19,7 @@ from custom_components.lamax_connect.lamax import (
 
 from .conftest import TEST_PASSWORD, TEST_USERNAME
 
-USER_INPUT = {
-    CONF_USERNAME: TEST_USERNAME,
-    CONF_PASSWORD: TEST_PASSWORD,
-    CONF_LOGIN_TYPE: "1",
-}
+USER_INPUT = {CONF_USERNAME: TEST_USERNAME, CONF_PASSWORD: TEST_PASSWORD}
 
 
 async def test_full_user_flow(hass: HomeAssistant, mock_client: AsyncMock) -> None:
@@ -160,3 +156,25 @@ async def test_reconfigure_rejects_different_account(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "unique_id_mismatch"
+
+
+async def test_config_flow_asks_only_for_email_and_password(
+    hass: HomeAssistant, mock_client: AsyncMock
+) -> None:
+    """The form is deliberately just two fields; phone sign-in is not offered."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    assert set(result["data_schema"].schema) == {CONF_USERNAME, CONF_PASSWORD}
+
+
+async def test_login_uses_email_type(hass: HomeAssistant, mock_client: AsyncMock) -> None:
+    """Credentials are submitted as an email login."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+    await hass.async_block_till_done()
+
+    mock_client.login.assert_awaited_with(TEST_USERNAME, TEST_PASSWORD)

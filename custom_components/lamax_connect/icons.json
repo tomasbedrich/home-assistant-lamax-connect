@@ -22,11 +22,23 @@
       }
     },
     "sensor": {
-      "steps": {
-        "default": "mdi:shoe-print"
+      "blood_oxygen": {
+        "default": "mdi:water-percent"
+      },
+      "calories": {
+        "default": "mdi:fire"
+      },
+      "distance": {
+        "default": "mdi:map-marker-distance"
+      },
+      "heart_rate": {
+        "default": "mdi:heart-pulse"
       },
       "last_seen": {
         "default": "mdi:clock-outline"
+      },
+      "steps": {
+        "default": "mdi:shoe-print"
       }
     }
   }

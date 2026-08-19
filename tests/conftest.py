@@ -10,12 +10,13 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.lamax_connect.const import (
-    CONF_COUNTRY,
-    CONF_LOGIN_TYPE,
-    DOMAIN,
+from custom_components.lamax_connect.const import DOMAIN
+from custom_components.lamax_connect.lamax import (
+    Device,
+    DeviceSnapshot,
+    Health,
+    Location,
 )
-from custom_components.lamax_connect.lamax import Device, DeviceSnapshot, Location
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
@@ -61,23 +62,37 @@ def location() -> Location:
 
 
 @pytest.fixture
+def health() -> Health:
+    """Return health readings as the backend reports them."""
+    return Health.from_json(
+        {
+            "devicestep": "9474",
+            "step_time": 1787145590236,
+            "calories": 387,
+            "km": "6.78",
+            "heart_rate": 93,
+            "heart_rate_system_time": "1785747669000",
+            "blood_oxygen": 99,
+            "blood_oxygen_system_time": "1784733205000",
+            "body_temperature": "0",
+            "blood_pressure": "0,0",
+        }
+    )
+
+
+@pytest.fixture
 def mock_config_entry() -> MockConfigEntry:
     """Return a configured LAMAX Connect entry."""
     return MockConfigEntry(
         domain=DOMAIN,
         title=TEST_USERNAME,
         unique_id=TEST_USERNAME,
-        data={
-            CONF_USERNAME: TEST_USERNAME,
-            CONF_PASSWORD: TEST_PASSWORD,
-            CONF_LOGIN_TYPE: "1",
-            CONF_COUNTRY: None,
-        },
+        data={CONF_USERNAME: TEST_USERNAME, CONF_PASSWORD: TEST_PASSWORD},
     )
 
 
 @pytest.fixture
-def mock_client(device: Device, location: Location) -> Generator[AsyncMock]:
+def mock_client(device: Device, location: Location, health: Health) -> Generator[AsyncMock]:
     """Patch LamaxClient everywhere the integration constructs one."""
     with (
         patch("custom_components.lamax_connect.LamaxClient", autospec=True) as mock_in_init,
@@ -89,7 +104,7 @@ def mock_client(device: Device, location: Location) -> Generator[AsyncMock]:
         client.u_id = 2000000000000002
         client.login = AsyncMock(return_value=None)
         client.async_get_snapshots = AsyncMock(
-            return_value={device.imei: DeviceSnapshot(device, location, 9474)}
+            return_value={device.imei: DeviceSnapshot(device, location, health)}
         )
         client.async_send_message = AsyncMock(return_value=None)
         client.async_find_device = AsyncMock(return_value=None)

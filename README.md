@@ -15,7 +15,8 @@ Android app. It is not affiliated with or endorsed by LAMAX Electronics.
   automations.
 - **Messaging** - each watch gets a `notify` entity, so you can send it a text
   message from any automation or script.
-- **Battery, steps and last-seen sensors** for each watch.
+- **Activity and health sensors** - battery, steps, calories, distance, heart
+  rate and blood oxygen.
 - **Buttons** to ask the watch for a fresh GPS fix, or to make it ring so it can
   be found.
 - **Multiple watches** on one account are supported, including watches bound
@@ -55,14 +56,16 @@ Go to **Settings → Devices & Services → Add Integration** and search for
 
 | Field | Description |
 | --- | --- |
-| Email or phone number | The same login you use in the LAMAX Connect app |
+| Email | The email address registered in the LAMAX Connect app |
 | Password | The password for that account |
-| Sign in with | Whether the account is registered by email or by phone |
-| Country dial code | Phone sign-in only, without the leading `+` (e.g. `420`) |
 
 Sign in with the **same account you use in the app**. The LAMAX backend does not
 offer app passwords or API tokens, so the integration signs in exactly as the
 app does. Only one Home Assistant config entry per LAMAX account is allowed.
+
+> [!NOTE]
+> Only email sign-in is supported. If your LAMAX account is registered to a
+> phone number, add an email address to it in the app first.
 
 > [!IMPORTANT]
 > **The LAMAX backend allows only one active session per account.** Signing in
@@ -114,7 +117,25 @@ For each watch (`<watch>` is the watch name from the app):
 | `notify.<watch>_message` | Send a text message to the watch |
 | `sensor.<watch>_battery` | Battery percentage |
 | `sensor.<watch>_steps` | Today's step count as reported by the watch |
+| `sensor.<watch>_calories` | Calories burned today |
+| `sensor.<watch>_distance` | Distance covered today |
+| `sensor.<watch>_heart_rate` | Last heart rate measurement |
+| `sensor.<watch>_blood_oxygen` | Last blood oxygen (SpO₂) measurement |
 | `sensor.<watch>_last_seen` | When the watch last reported a position |
+
+### About the health readings
+
+Heart rate and blood oxygen are **not** measured continuously - the watch only
+records them when a measurement is taken on the device. A reading can therefore
+be hours, days or weeks old. Every health sensor carries a `measured_at`
+attribute with the time the reading was actually captured; use it rather than
+the entity's `last_changed` if the age matters:
+
+```yaml
+{{ state_attr('sensor.junior_heart_rate', 'measured_at') }}
+```
+
+Steps, calories and distance reset daily on the watch.
 | `binary_sensor.<watch>_location_fix` | Whether a position is currently known |
 | `button.<watch>_request_location` | Ask the watch for a fresh GPS fix |
 | `button.<watch>_find_watch` | Make the watch ring so it can be found |
@@ -191,15 +212,18 @@ script:
 - **No geofence management.** The watch's own geofences can be read from the API
   but are not exposed - use Home Assistant zones with the `device_tracker`
   instead, which is more flexible.
-- **No health metrics.** Heart rate, temperature and sleep endpoints exist in
-  the API but are not implemented.
+- **Body temperature and blood pressure are not exposed.** The API returns them
+  but the tested watch reports `0` for both, so they appear to be unsupported
+  on this hardware. Open an issue if your watch measures them.
+- **Health readings are on-demand, not continuous.** See
+  [About the health readings](#about-the-health-readings).
 - **Unofficial API.** LAMAX can change or break the backend at any time.
 
 ## Troubleshooting
 
-**"Invalid credentials" when setting up** - confirm the login works in the LAMAX
-Connect app, and that **Sign in with** matches how the account is registered. For
-phone accounts the country dial code is required, without the leading `+`.
+**"Invalid credentials" when setting up** - confirm the email and password work
+in the LAMAX Connect app. Accounts registered to a phone number rather than an
+email address are not supported; add an email address in the app first.
 
 **My phone keeps getting logged out of the LAMAX app** - expected; only one
 session per account exists. Use a separate LAMAX account for Home Assistant.
@@ -219,6 +243,10 @@ needs signal. Check `sensor.<watch>_last_seen`, press
 `button.<watch>_request_location`, and confirm the watch shows a recent position
 in the LAMAX app. If the app is also stale, the watch is offline, not the
 integration.
+
+**Heart rate or blood oxygen is empty or looks old** - expected; the watch only
+records these when a measurement is taken on the device. Check the sensor's
+`measured_at` attribute.
 
 **Entity names are wrong** - entity names come from the watch names set in the
 LAMAX app. Rename the watch there, then reload the integration.

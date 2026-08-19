@@ -19,6 +19,7 @@ from .models import (
     Device,
     DeviceSnapshot,
     GeoFence,
+    Health,
     Location,
     TrackPoint,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "Device",
     "DeviceSnapshot",
     "GeoFence",
+    "Health",
     "LamaxAuthError",
     "LamaxClient",
     "LamaxConnectionError",
