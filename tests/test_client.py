@@ -16,6 +16,8 @@ from custom_components.lamax_connect.lamax import (
     LamaxClient,
     LamaxConnectionError,
     LamaxError,
+    message_width,
+    truncate_message,
 )
 from custom_components.lamax_connect.lamax.crypto import decrypt, encrypt
 
@@ -648,6 +650,40 @@ async def test_long_messages_are_truncated(client: LamaxClient, send: str) -> No
 
     assert actually_sent == "x" * 30
     assert sent["msg_content"].split("_", 3)[3] == "x" * 30
+
+
+async def test_czech_diacritics_get_the_full_30_characters(
+    client: LamaxClient,
+) -> None:
+    """Latin text counts one per character, so accents are not charged double."""
+    client.token = "TOK"
+    client.u_id = 42
+    czech = "Sváča je připravená, přijď!!"  # 28 characters
+    assert len(czech) == 28
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/rtosWechat/appSendDevice", body=encrypted({"code": 0}))
+        assert await client.async_send_message("860000000000001", 7, czech) == czech
+
+
+async def test_wide_characters_count_double(client: LamaxClient) -> None:
+    """CJK is charged two units each, matching the app's input filter."""
+    client.token = "TOK"
+    client.u_id = 42
+    wide = "中" * 20  # 40 units, so only 15 characters fit
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/rtosWechat/appSendDevice", body=encrypted({"code": 0}))
+        sent = await client.async_send_message("860000000000001", 7, wide)
+
+    assert sent == "中" * 15
+    assert message_width(sent) == 30
+
+
+def test_message_width_counts_punctuation_as_wide() -> None:
+    """Curly quotes and dashes live in General Punctuation, charged double."""
+    assert message_width("abc") == 3
+    assert message_width("\u2014") == 2  # em dash
+    assert message_width("\u2019") == 2  # right single quote
+    assert truncate_message("a" * 40) == "a" * 30
 
 
 async def test_message_at_the_limit_is_untouched(client: LamaxClient) -> None:

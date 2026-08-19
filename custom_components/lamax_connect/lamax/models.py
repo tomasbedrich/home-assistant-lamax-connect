@@ -17,9 +17,46 @@ MSG_TYPE_VOICE = 3
 
 MSG_KINDS = {MSG_TYPE_TEXT: "text", MSG_TYPE_EMOJI: "emoji", MSG_TYPE_VOICE: "voice"}
 
-# The watch silently trims anything longer, so truncate up front and say so
-# rather than letting the recipient receive a half sentence unannounced.
+# The watch silently trims longer messages, so truncate up front and say so
+# rather than letting the recipient receive half a sentence unannounced.
+#
+# The budget is 30 *weighted* units, not characters or bytes: the app's own
+# input filter (com.ztc.lamax.ui.inputfilter.ChineseInputFiler) counts CJK and
+# a few punctuation blocks as 2 and everything else as 1. Latin text, including
+# Czech diacritics, therefore gets the full 30 characters.
 MAX_MESSAGE_LENGTH = 30
+
+# Unicode blocks the app's filter charges double, as Java UnicodeBlock ranges.
+_DOUBLE_WIDTH_RANGES = (
+    (0x2000, 0x206F),  # General Punctuation (curly quotes, dashes, ellipsis)
+    (0x3000, 0x303F),  # CJK Symbols and Punctuation
+    (0x3400, 0x4DBF),  # CJK Unified Ideographs Extension A
+    (0x4E00, 0x9FFF),  # CJK Unified Ideographs
+    (0xF900, 0xFAFF),  # CJK Compatibility Ideographs
+    (0xFF00, 0xFFEF),  # Halfwidth and Fullwidth Forms
+)
+
+
+def _char_width(char: str) -> int:
+    """Return the weight the watch's input filter assigns to one character."""
+    code = ord(char)
+    return 2 if any(low <= code <= high for low, high in _DOUBLE_WIDTH_RANGES) else 1
+
+
+def message_width(text: str) -> int:
+    """Return the weighted length the watch measures a message by."""
+    return sum(_char_width(char) for char in text)
+
+
+def truncate_message(text: str, limit: int = MAX_MESSAGE_LENGTH) -> str:
+    """Trim text to what the watch will actually accept."""
+    used = 0
+    for index, char in enumerate(text):
+        used += _char_width(char)
+        if used > limit:
+            return text[:index]
+    return text
+
 
 # Receiver segment of msg_content that marks the shared family conversation
 # (a private message addresses the watch as "FFF<imei>" instead).

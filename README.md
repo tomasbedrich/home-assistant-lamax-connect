@@ -136,11 +136,24 @@ The watch has two conversations, and each gets its own entity:
 
 > [!IMPORTANT]
 > **Messages are limited to 30 characters.** The watch silently trims anything
-> longer, so the integration truncates to 30 characters up front and logs a
-> warning telling you exactly what was sent.
+> longer, so the integration truncates up front and logs a warning telling you
+> exactly what was sent.
 
-When the watch sends a message, `event.<watch>_message_received` fires with the
-event type `text`, `emoji` or `voice`, and these attributes:
+The limit is 30 *weighted* units rather than characters or bytes: Chinese,
+Japanese and Korean characters, and typographic punctuation such as curly
+quotes, en/em dashes and `…`, each cost 2. Everything else costs 1, so plain
+Latin text - **including Czech diacritics** - gets the full 30 characters.
+
+#### Receiving messages
+
+`event.<watch>_message_received` fires for messages the watch sends to **either
+conversation** - there is one event entity per watch, not one per thread. Use
+the `is_group` attribute to tell them apart:
+
+- `is_group: true` - the watch posted to the family chat
+- `is_group: false` - the watch sent you a private message
+
+The event carries type `text`, `emoji` or `voice`, and these attributes:
 
 | Attribute | Meaning |
 | --- | --- |
@@ -149,6 +162,13 @@ event type `text`, `emoji` or `voice`, and these attributes:
 | `is_group` | `true` if it went to the family chat |
 | `sent_at` | Watch-local time the message was written |
 | `duration` | Voice note length in seconds, otherwise `null` |
+
+Filter on `is_group` when an automation should only react to one thread:
+
+```yaml
+      - condition: template
+        value_template: "{{ trigger.to_state.attributes.is_group }}"
+```
 
 ```yaml
 automation:
@@ -261,7 +281,8 @@ script:
 - **Polling only.** The LAMAX app receives live push over RongCloud IM; this
   integration does not implement that protocol, so positions and incoming
   messages are only as fresh as the 5-minute poll.
-- **Messages are capped at 30 characters** by the watch.
+- **Messages are capped at 30 weighted characters** by the watch (CJK and
+  typographic punctuation count double).
 - **Voice notes cannot be played.** Incoming ones fire an event with their
   duration, but the audio is not downloaded, and sending voice is not
   supported.

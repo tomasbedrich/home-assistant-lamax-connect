@@ -185,13 +185,31 @@ Things that only surfaced once the integration ran against a real account:
   The receiver segment is `FFF<imei>` for private and the literal `1` for the
   family conversation:
   `"<yyMMddHHmmss>_<sender_u_id>_<receiver>_<text>"`.
-- **Outgoing text is capped at 30 characters**, trimmed silently by the watch.
+- **Outgoing text is capped at 30 weighted units**, trimmed silently. The app's
+  own filter (`ui.inputfilter.ChineseInputFiler`, wired up in
+  `wechat.widget.ChatBottomView` with a limit of 30) charges 2 for
+  `CJK_UNIFIED_IDEOGRAPHS`, `CJK_COMPATIBILITY_IDEOGRAPHS`,
+  `CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A`, `GENERAL_PUNCTUATION`,
+  `CJK_SYMBOLS_AND_PUNCTUATION` and `HALFWIDTH_AND_FULLWIDTH_FORMS`, and 1 for
+  everything else - so it is neither a character nor a byte count, and Latin
+  text with diacritics gets the full 30.
 - **Receiving is `POST /rtosWechat/getVoiceListPost {token, did}`** returning
   `chaMsgList` of `{msg_content, msg_type}` with the same envelope. `msg_type`
   here is the content kind (1 text, 2 emoji, 3 voice); for voice the trailing
   segment is a duration in seconds and the audio sits in Alibaba OSS. The
   backend never deletes delivered messages and the app de-duplicates locally on
   the exact `msg_content` string, so any client must do the same.
+- **One inbox, two conversations.** `getVoiceListPost` takes only
+  `{token, did}` and is not filtered by thread - private and family messages
+  arrive together and the app separates them client-side on `receive_id`.
+  `WechatGroupActivity` queries `receive_id = "1"`; `WechatPrivateActivity`
+  queries the pair `(receive_id = <my u_id> AND send_id = "FFF<imei>")` or its
+  mirror. Messages from `getVoiceListPost` are always inbound - the handler
+  stamps direction unconditionally.
+- **The endpoint only applies to some hardware.** `ChatDeviceFragment` calls
+  `getVoiceListPost` only when the mapped `device_type` setting is 2, 3, 4 or
+  5, and uses RongCloud history otherwise. Raw `device_type` 26-30 (the tested
+  watch reports 27) map to 4, so polling is the correct path here.
 - **Message sends are acknowledged, not confirmed.** The REST response only
   says the backend accepted the request; there is no delivery receipt, and the
   live delivery path is RongCloud IM. Treat a successful send as "queued".

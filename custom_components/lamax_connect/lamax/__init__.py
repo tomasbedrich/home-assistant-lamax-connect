@@ -26,6 +26,8 @@ from .models import (
     Location,
     Message,
     TrackPoint,
+    message_width,
+    truncate_message,
 )
 
 __all__ = [
@@ -50,4 +52,6 @@ __all__ = [
     "Location",
     "Message",
     "TrackPoint",
+    "message_width",
+    "truncate_message",
 ]

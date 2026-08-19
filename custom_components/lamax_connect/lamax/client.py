@@ -28,6 +28,7 @@ from .models import (
     Location,
     Message,
     TrackPoint,
+    truncate_message,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -285,10 +286,10 @@ class LamaxClient:
         if self.u_id is None:
             raise LamaxAuthError(CODE_SESSION_EXPIRED, "Not logged in")
 
-        text = message[:MAX_MESSAGE_LENGTH]
+        text = truncate_message(message)
         if text != message:
             _LOGGER.warning(
-                "Message truncated to the watch limit of %s characters: %r -> %r",
+                "Message truncated to the watch limit of %s units: %r -> %r",
                 MAX_MESSAGE_LENGTH,
                 message,
                 text,
