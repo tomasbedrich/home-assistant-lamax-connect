@@ -69,17 +69,24 @@ def test_battery_255_means_charging_not_255_percent() -> None:
     assert location.battery is None
 
 
-def test_normal_battery_is_not_charging() -> None:
-    """A real percentage is reported as-is."""
+def test_normal_battery_is_reported_as_is() -> None:
+    """A real percentage is reported as-is, and is not charging."""
     location = Location.from_json({"Electricity": 20})
 
     assert location.charging is False
     assert location.battery == 20
 
 
-def test_missing_battery_is_neither() -> None:
+def test_missing_battery_is_unknown() -> None:
     """No battery field means unknown, not discharging at 0%."""
     location = Location.from_json({})
 
     assert location.battery is None
     assert location.charging is False
+
+
+def test_only_the_cell_tower_fix_is_coarse() -> None:
+    """Type 1 is a cell tower; 0 is GPS and 2 is WiFi, both usable."""
+    assert Location.from_json({"locationType": 1}).is_coarse is True
+    assert Location.from_json({"locationType": 0}).is_coarse is False
+    assert Location.from_json({"locationType": 2}).is_coarse is False

@@ -10,7 +10,6 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -29,17 +28,8 @@ class LamaxBinarySensorEntityDescription(BinarySensorEntityDescription):
 
 
 BINARY_SENSORS: tuple[LamaxBinarySensorEntityDescription, ...] = (
-    LamaxBinarySensorEntityDescription(
-        key="location_fix",
-        translation_key="location_fix",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: bool(
-            data.location
-            and data.location.latitude is not None
-            and data.location.longitude is not None
-        ),
-    ),
+    # As old as the position report it rides on, so read it together with the
+    # "location_updated" sensor.
     LamaxBinarySensorEntityDescription(
         key="charging",
         device_class=BinarySensorDeviceClass.BATTERY_CHARGING,

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -34,9 +33,6 @@ class LamaxSensorEntityDescription(SensorEntityDescription):
     """Describes a LAMAX Connect sensor."""
 
     value_fn: Callable[[DeviceSnapshot], int | float | datetime | None]
-    # Health readings are only captured when the child uses the watch, so they
-    # can be days old. Expose when the reading was actually taken.
-    measured_at_fn: Callable[[DeviceSnapshot], datetime | None] | None = None
 
 
 SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
@@ -46,10 +42,9 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.location.battery if data.location else None,
         # Battery rides along with the position report, so it is exactly as old
-        # as the last fix - which can be days if the watch has not reported.
-        measured_at_fn=lambda data: data.location.updated_at if data.location else None,
+        # as the fix - see the "location_updated" sensor for that age.
+        value_fn=lambda data: data.location.battery if data.location else None,
     ),
     LamaxSensorEntityDescription(
         key="steps",
@@ -57,7 +52,6 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="steps",
         value_fn=lambda data: data.health.steps if data.health else None,
-        measured_at_fn=lambda data: data.health.steps_at if data.health else None,
     ),
     LamaxSensorEntityDescription(
         key="calories",
@@ -65,7 +59,6 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=KILOCALORIES,
         value_fn=lambda data: data.health.calories if data.health else None,
-        measured_at_fn=lambda data: data.health.steps_at if data.health else None,
     ),
     LamaxSensorEntityDescription(
         key="distance",
@@ -75,7 +68,6 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         suggested_display_precision=2,
         value_fn=lambda data: data.health.distance_km if data.health else None,
-        measured_at_fn=lambda data: data.health.steps_at if data.health else None,
     ),
     LamaxSensorEntityDescription(
         key="heart_rate",
@@ -83,7 +75,6 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=BEATS_PER_MINUTE,
         value_fn=lambda data: data.health.heart_rate if data.health else None,
-        measured_at_fn=lambda data: data.health.heart_rate_at if data.health else None,
     ),
     LamaxSensorEntityDescription(
         key="blood_oxygen",
@@ -91,13 +82,29 @@ SENSORS: tuple[LamaxSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda data: data.health.blood_oxygen if data.health else None,
-        measured_at_fn=lambda data: data.health.blood_oxygen_at if data.health else None,
+    ),
+    # Heart rate and blood oxygen are only captured when a measurement is taken
+    # on the watch, so a reading can be weeks old while the sensor above looks
+    # freshly polled. Each one therefore gets its own timestamp next to it.
+    LamaxSensorEntityDescription(
+        key="heart_rate_measured",
+        translation_key="heart_rate_measured",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: data.health.heart_rate_at if data.health else None,
     ),
     LamaxSensorEntityDescription(
-        key="last_seen",
-        translation_key="last_seen",
+        key="blood_oxygen_measured",
+        translation_key="blood_oxygen_measured",
         device_class=SensorDeviceClass.TIMESTAMP,
-        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.health.blood_oxygen_at if data.health else None,
+    ),
+    # The watch only reports its position when asked, so the last fix - and the
+    # battery reading that rides with it - can be days old while Home Assistant
+    # keeps showing the tracker as "home". This is that age.
+    LamaxSensorEntityDescription(
+        key="location_updated",
+        translation_key="location_updated",
+        device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda data: data.location.updated_at if data.location else None,
     ),
 )
@@ -137,11 +144,3 @@ class LamaxSensor(LamaxEntity, SensorEntity):
     def native_value(self) -> int | float | datetime | None:
         """Return the current value."""
         return self.entity_description.value_fn(self.device_data)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Expose when the reading was captured, for readings that go stale."""
-        if self.entity_description.measured_at_fn is None:
-            return None
-        measured_at = self.entity_description.measured_at_fn(self.device_data)
-        return {"measured_at": measured_at.isoformat() if measured_at else None}

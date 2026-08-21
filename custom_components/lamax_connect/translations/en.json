@@ -49,11 +49,6 @@
     }
   },
   "entity": {
-    "binary_sensor": {
-      "location_fix": {
-        "name": "Location fix"
-      }
-    },
     "button": {
       "request_location": {
         "name": "Request location"
@@ -79,6 +74,9 @@
       "blood_oxygen": {
         "name": "Blood oxygen"
       },
+      "blood_oxygen_measured": {
+        "name": "Blood oxygen measured"
+      },
       "calories": {
         "name": "Calories"
       },
@@ -88,8 +86,11 @@
       "heart_rate": {
         "name": "Heart rate"
       },
-      "last_seen": {
-        "name": "Last seen"
+      "heart_rate_measured": {
+        "name": "Heart rate measured"
+      },
+      "location_updated": {
+        "name": "Location updated"
       },
       "steps": {
         "name": "Steps"

@@ -49,11 +49,6 @@
     }
   },
   "entity": {
-    "binary_sensor": {
-      "location_fix": {
-        "name": "Určená poloha"
-      }
-    },
     "button": {
       "request_location": {
         "name": "Zjistit polohu"
@@ -79,6 +74,9 @@
       "blood_oxygen": {
         "name": "Okysličení krve"
       },
+      "blood_oxygen_measured": {
+        "name": "Měření okysličení krve"
+      },
       "calories": {
         "name": "Kalorie"
       },
@@ -88,8 +86,11 @@
       "heart_rate": {
         "name": "Tepová frekvence"
       },
-      "last_seen": {
-        "name": "Naposledy viděno"
+      "heart_rate_measured": {
+        "name": "Měření tepové frekvence"
+      },
+      "location_updated": {
+        "name": "Aktualizace polohy"
       },
       "steps": {
         "name": "Kroky"

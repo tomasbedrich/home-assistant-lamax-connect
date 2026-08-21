@@ -1,13 +1,5 @@
 {
   "entity": {
-    "binary_sensor": {
-      "location_fix": {
-        "default": "mdi:crosshairs-gps",
-        "state": {
-          "off": "mdi:crosshairs-question"
-        }
-      }
-    },
     "button": {
       "request_location": {
         "default": "mdi:crosshairs-gps"
@@ -33,6 +25,9 @@
       "blood_oxygen": {
         "default": "mdi:water-percent"
       },
+      "blood_oxygen_measured": {
+        "default": "mdi:water-percent"
+      },
       "calories": {
         "default": "mdi:fire"
       },
@@ -42,8 +37,11 @@
       "heart_rate": {
         "default": "mdi:heart-pulse"
       },
-      "last_seen": {
-        "default": "mdi:clock-outline"
+      "heart_rate_measured": {
+        "default": "mdi:heart-pulse"
+      },
+      "location_updated": {
+        "default": "mdi:map-marker-clock"
       },
       "steps": {
         "default": "mdi:shoe-print"

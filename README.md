@@ -12,7 +12,7 @@ Android app. It is not affiliated with or endorsed by LAMAX Electronics.
 
 - **Location tracking** - each watch appears as a `device_tracker` with GPS
   coordinates and accuracy, so it works with zones, maps and presence
-  automations.
+  automations, plus a sensor saying how old the fix is.
 - **Messaging** - send a private message to the watch or post to the shared
   family chat, and get an event in Home Assistant when the watch replies.
 - **Activity and health sensors** - battery, steps, calories, distance, heart
@@ -122,8 +122,10 @@ For each watch (`<watch>` is the watch name from the app):
 | `sensor.<watch>_calories` | Calories burned today |
 | `sensor.<watch>_distance` | Distance covered today |
 | `sensor.<watch>_heart_rate` | Last heart rate measurement |
+| `sensor.<watch>_heart_rate_measured` | When that heart rate was measured |
 | `sensor.<watch>_blood_oxygen` | Last blood oxygen (SpO₂) measurement |
-| `sensor.<watch>_last_seen` | When the watch last reported a position |
+| `sensor.<watch>_blood_oxygen_measured` | When that SpO₂ reading was measured |
+| `sensor.<watch>_location_updated` | When the position and battery were reported |
 
 ### Family chat
 
@@ -215,17 +217,18 @@ cue to open the LAMAX app, not a replacement for it.
 
 Heart rate and blood oxygen are **not** measured continuously - the watch only
 records them when a measurement is taken on the device. A reading can therefore
-be hours, days or weeks old. Every health sensor carries a `measured_at`
-attribute with the time the reading was actually captured; use it rather than
-the entity's `last_changed` if the age matters:
+be hours, days or weeks old, while Home Assistant's own "last changed" resets
+on every restart. Each reading therefore has its own timestamp sensor next to
+it - prefer that:
 
-```yaml
-{{ state_attr('sensor.junior_heart_rate', 'measured_at') }}
-```
+| Reading | Its age |
+| --- | --- |
+| `sensor.junior_heart_rate` | `sensor.junior_heart_rate_measured` |
+| `sensor.junior_blood_oxygen` | `sensor.junior_blood_oxygen_measured` |
+| `sensor.junior_battery` | `sensor.junior_location_updated` |
 
 Steps, calories and distance reset daily on the watch.
-| `binary_sensor.<watch>_location_fix` | Whether a position is currently known |
-| `binary_sensor.<watch>_charging` | Whether the watch is on the charger |
+| `binary_sensor.<watch>_charging` | Whether the watch was on the charger at the last position report |
 | `button.<watch>_request_location` | Ask the watch for a fresh GPS fix |
 | `button.<watch>_find_watch` | Make the watch ring so it can be found |
 
@@ -236,33 +239,46 @@ backend sends the battery level inside the location response, so if the watch
 has not reported its position for a day, the battery figure is a day old too -
 even though steps and health keep updating.
 
-The `sensor.<watch>_battery` entity carries a `measured_at` attribute with the
-time that reading was actually captured. If it disagrees with the LAMAX app,
-compare that timestamp first:
-
-```yaml
-{{ state_attr('sensor.junior_battery', 'measured_at') }}
-```
+`sensor.<watch>_location_updated` is the age of both the position and the
+battery - they arrive in the same response. If the battery disagrees with the
+LAMAX app, read that timestamp first.
 
 The app refreshes it by asking the watch for a fresh position whenever you open
 the map. Home Assistant deliberately does not do that on every poll, because it
 wakes the watch's radio and costs the very battery you are measuring. To force
-an update, press `button.<watch>_request_location` and wait for the next poll.
+an update, press `button.<watch>_request_location`.
 
 While the watch is on its charger the backend reports a sentinel instead of a
 percentage, so `sensor.<watch>_battery` becomes unknown and
-`binary_sensor.<watch>_charging` turns on.
+`binary_sensor.<watch>_charging` turns on. That flag is as old as the position
+report it arrived with, so read it next to `sensor.<watch>_location_updated`.
 
 ## How data is updated
 
-The integration polls the LAMAX cloud every **5 minutes** and reads the last
-position the watch reported on its own schedule. The watch itself decides how
-often it uploads a fix (configurable in the LAMAX app), so a position can be
-older than the polling interval - check `sensor.<watch>_last_seen`.
+The integration polls the LAMAX cloud every **5 minutes**, but polling only
+reads what the watch has already uploaded. The watch reports on its own
+schedule (configurable in the LAMAX app) and needs signal to do it, so a fix can
+be older than the polling interval - and a watch that is asleep or out of
+coverage can leave it much older than that.
 
-To force an immediate fix, press `button.<watch>_request_location`. This asks
-the watch to report right away; the new position appears at the next poll,
-usually within a minute. This is a silent background request - it does not alert
+The tracker deliberately does **not** re-write its state when a poll brings
+the same position, so its own "last changed" stays put instead of resetting
+every five minutes. (Home Assistant normally forces that write for trackers,
+assuming they are push-based.) It still resets when Home Assistant restarts or
+when a failed poll makes the entity unavailable, which is why
+`sensor.<watch>_location_updated` exists: it is the exact age of the fix, taken
+from the watch's own report, and it survives restarts.
+
+The tracker uses GPS and WiFi fixes (this hardware reports WiFi accurate to
+tens of metres) but ignores a bare cell tower estimate, which can be kilometres
+off and would still drag zone matching with it.
+
+To force a fresh fix, press `button.<watch>_request_location`. Like the map
+screen in the app, this asks the watch to report and then keeps re-reading the
+position every 20 seconds for up to 3 minutes, stopping as soon as the fix
+changes - so the position appears on its own once the watch answers, with no
+second button press. If nothing has changed after 3 minutes, the watch did not
+answer; the polling costs cloud requests, not watch battery. This is a silent background request - it does not alert
 the child.
 
 ## Examples
@@ -358,19 +374,23 @@ recovered automatically. Check whether the password was changed in the app.
 still see this, enable debug logging and open an issue with the logged result
 code for `/rtosWechat/appSendDevice`.
 
-**Position is stale or missing** - the watch reports on its own schedule and
-needs signal. Check `sensor.<watch>_last_seen`, press
-`button.<watch>_request_location`, and confirm the watch shows a recent position
-in the LAMAX app. If the app is also stale, the watch is offline, not the
-integration.
+**Position is stale or missing** - check `sensor.<watch>_location_updated`
+first, then press `button.<watch>_request_location` and wait: the watch has to
+wake, get a fix and upload it. If the timestamp still does not move, compare
+with the LAMAX app - if the app is stale too, the watch is not reporting (off,
+no signal, no data, or location disabled in its settings) rather than the
+integration being wrong.
+
+**The tracker says "home" but nobody is there** - it is showing the last GPS
+fix, not a current one; `sensor.<watch>_location_updated` says when that was.
 
 **Battery does not match the LAMAX app** - the reading is as old as the last
-position report; check the sensor's `measured_at` attribute. See
+position report; check `sensor.<watch>_location_updated`. See
 [Why the battery can disagree with the app](#why-the-battery-can-disagree-with-the-app).
 
 **Heart rate or blood oxygen is empty or looks old** - expected; the watch only
-records these when a measurement is taken on the device. Check the sensor's
-`measured_at` attribute.
+records these when a measurement is taken on the device. Check
+`sensor.<watch>_heart_rate_measured` and `sensor.<watch>_blood_oxygen_measured`.
 
 **Entity names are wrong** - entity names come from the watch names set in the
 LAMAX app. Rename the watch there, then reload the integration.

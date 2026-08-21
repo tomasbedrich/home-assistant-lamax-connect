@@ -66,6 +66,14 @@ GROUP_RECEIVER = "1"
 # percentage (LocationFragment shows a charging icon for it).
 BATTERY_CHARGING = 255
 
+# locationType of a position report: 1 = LBS (cell tower), 2 = WiFi, anything
+# else = GPS (LocationFragment.c1 picks the ic_lbs / ic_wifi / ic_gps icon on
+# exactly that). Only the cell tower estimate is treated as untrustworthy here -
+# a WiFi fix from this hardware came back accurate to 25 m, while a tower can be
+# kilometres out and would still drag Home Assistant's zone matching with it.
+LOCATION_TYPE_LBS = 1
+LOCATION_TYPE_WIFI = 2
+
 
 type JsonDict = dict[str, Any]
 
@@ -140,6 +148,11 @@ class Location:
     location_type: int
     description: str
     updated_at: datetime | None
+
+    @property
+    def is_coarse(self) -> bool:
+        """Return True for a cell tower estimate, which can be kilometres off."""
+        return self.location_type == LOCATION_TYPE_LBS
 
     @classmethod
     def from_json(cls, data: JsonDict) -> Location:
