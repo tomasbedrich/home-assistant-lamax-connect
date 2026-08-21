@@ -110,10 +110,11 @@ this so a Home Assistant config entry can trigger reauth.
 - `POST /controllerDevice/ask/localtionPost {imei}` — asks the *watch* to
   push a fresh GPS fix upstream. The HTTP response itself is just an ack;
   the actual fix has to be picked up afterwards.
-- `POST /location/getlast/searchPost {did}` → top level: `{lat, lng,
-  Electricity (battery %), accuracy, locationType, step, desc, uploadtime}`. This is
-  the "give me what you've got" call and is what the Home Assistant
-  device_tracker polls.
+- `POST /location/getlast/searchPost {did, imei}` → top level: `{lat, lng,
+  Electricity (battery %), accuracy, locationType, step, desc, uploadtime,
+  update_time}`. This is the "give me what you've got" call and is what the Home
+  Assistant device_tracker polls. **Both identifiers are required** - see the
+  production notes; `did` alone returns a stale record.
 - `POST /location/watchtrackPost {did, starttime, endtime}` → `List`: array
   of `{imei, lat, lng, locationType, date, uploadtime}` — track history.
 - `POST /security/{add,update,delete,get}watchfence*` — full CRUD on
@@ -228,6 +229,52 @@ Things that only surfaced once the integration ran against a real account:
 - **Message sends are acknowledged, not confirmed.** The REST response only
   says the backend accepted the request; there is no delivery receipt, and the
   live delivery path is RongCloud IM. Treat a successful send as "queued".
+- **`/location/getlast/searchPost` needs both `did` and `imei`.** With `did`
+  alone the backend answers `code 0` with a *stale* record - verified live: the
+  same second, `{did}` returned a four-day-old fix at home while `{did, imei}`
+  returned a ten-minute-old fix at the child's actual location. The app always
+  sends `{token, imei, did}` (`CWRequestUtils.W`). Adding a surplus identifier
+  such as `d_id` fails with `code 555`, and `{imei}` alone does too, so the
+  pair is exact. This one omission looked exactly like a watch that had stopped
+  reporting: `ask/localtionPost` returned `code 0` and nothing ever changed,
+  while steps and health - whose endpoint already sent `imei` - kept updating.
+- **Asking is still not answering.** `ask/localtionPost` only queues the
+  request; the fix appears in `getlast` once the watch has woken, fixed and
+  uploaded. The app keeps its refresh button disabled for 60 s and re-reads
+  afterwards, so a client should poll for a few minutes rather than once.
+- **`locationType` says how the position was obtained**: 1 = LBS (cell tower),
+  2 = WiFi, anything else = GPS. `LocationFragment.c1()` picks the `ic_lbs`,
+  `ic_wifi` or `ic_gps` icon on exactly that, and for 1 and 2 it makes the map
+  marker draggable with "update_latlng_prompt" - the app itself treats coarse
+  fixes as guesses the user may need to correct. In practice WiFi (2) came back
+  accurate to 25 m on the tested watch and is perfectly usable, so only the bare
+  cell tower estimate (1) is ignored for the tracker: Home Assistant matches
+  zones against the accuracy circle (`zone_dist - accuracy < zone_radius`) and
+  would report the watch as home from kilometres away.
+- **`Electricity == 255` means charging**, and like the battery percentage it is
+  only as fresh as the position report it rides on - read it together with that
+  timestamp.
+- **Timestamps: the epoch fields are the truth, the strings are decoration.**
+  `getlast` also returns `update_time`, which is `uploadtime` rendered in
+  GMT+8 (`TimeUtils.g/c` set that zone explicitly), and the health response
+  adds `heart_rate_upload_time`, `blood_oxygen_upload_time`,
+  `device_upload_time` and `sys_time` as preformatted strings - the app prints
+  them verbatim. On a live account `heart_rate_system_time` and
+  `blood_oxygen_system_time` matched their `*_upload_time` strings exactly once
+  rendered in the account's timezone, so the epoch-milliseconds fields are
+  correct instants and are what the integration parses.
+- **The health call needs no time window.** The app sends
+  `{token, did, starttime, endtime}` (today 00:00 to now) to
+  `/heath/getLastAllByDeviceLocalTimePost`; sending the window without `imei`
+  returns `code 555`, and sending `{did, imei}` with no window returns the last
+  known reading for every metric, which is what the integration wants anyway.
+- **`watchtrackPost` returns `code 2` when there is no history** in the
+  requested window, exactly like the geofence listing.
+- **The device list has no liveness field.** `status` on a `deviceList` entry
+  is the binder's role (1 = manager, 0 = member, per `BindMemberFragment`), not
+  an online flag, and there is no last-online endpoint anywhere in
+  `CWRequestUtils`. The only "last seen" the API can offer is the timestamp of
+  the last position report.
 
 ## Deliverables
 
@@ -237,9 +284,9 @@ Things that only surfaced once the integration ran against a real account:
   a standalone PyPI package later without changes.
 - `custom_components/lamax_connect/` - the Home Assistant integration built on
   that client: config flow with reauth and reconfigure, a
-  `DataUpdateCoordinator`, and `device_tracker` / `sensor` / `binary_sensor` /
-  `button` / `notify` platforms, plus redacted diagnostics.
-- `tests/` - 75 tests at 100% statement coverage, including crypto vectors
+  `DataUpdateCoordinator`, and `device_tracker` / `sensor` / `button` /
+  `event` / `notify` platforms, plus redacted diagnostics.
+- `tests/` - 127 tests at 100% statement coverage, including crypto vectors
   captured from the real compiled Android class.
 
 ## Caveats / what's not covered

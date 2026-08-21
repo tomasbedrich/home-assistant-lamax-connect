@@ -158,12 +158,25 @@ async def test_get_location(client: LamaxClient) -> None:
                 }
             ),
         )
-        location = await client.async_get_location(1)
+        location = await client.async_get_location(1, "860000000000001")
 
     assert location.latitude == pytest.approx(50.07553)
     assert location.longitude == pytest.approx(14.437800)
     assert location.battery == 100
     assert location.updated_at == datetime.fromtimestamp(1786950041, tz=UTC)
+
+
+async def test_get_location_sends_did_and_imei(client: LamaxClient) -> None:
+    """With did alone the backend answers with a days-old record."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/location/getlast/searchPost", body=encrypted({"code": 0}))
+        await client.async_get_location(1, "860000000000001")
+        request = next(iter(mocked.requests.values()))[0]
+        sent = json.loads(decrypt(request.kwargs["data"]))
+
+    assert sent["did"] == 1
+    assert sent["imei"] == "860000000000001"
 
 
 async def test_get_geofences_accepts_no_data_code(client: LamaxClient) -> None:
@@ -175,6 +188,17 @@ async def test_get_geofences_accepts_no_data_code(client: LamaxClient) -> None:
             body=encrypted({"code": 2, "GeoFenceList": []}),
         )
         assert await client.async_get_geofences(1) == []
+
+
+async def test_get_track_history_accepts_no_data_code(client: LamaxClient) -> None:
+    """Code 2 means the watch reported no position in the window."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/location/watchtrackPost",
+            body=encrypted({"code": 2}),
+        )
+        assert await client.async_get_track_history(1, datetime.now(UTC), datetime.now(UTC)) == []
 
 
 async def test_send_message_format(client: LamaxClient) -> None:
@@ -499,7 +523,9 @@ async def test_concurrent_expiry_relogins_once(client: LamaxClient) -> None:
 
         mocked.post(f"{BASE}/user/login", callback=login_cb, repeat=True)
         mocked.post(f"{BASE}/location/getlast/searchPost", callback=location_cb, repeat=True)
-        results = await asyncio.gather(*(client.async_get_location(i) for i in range(5)))
+        results = await asyncio.gather(
+            *(client.async_get_location(i, "860000000000001") for i in range(5))
+        )
 
     assert len(results) == 5
     assert all(r.latitude == pytest.approx(1.0) for r in results)

@@ -207,9 +207,15 @@ class LamaxClient:
         """
         await self._post("/controllerDevice/ask/localtionPost", {"imei": imei})
 
-    async def async_get_location(self, d_id: int) -> Location:
-        """Return the last position reported by a watch."""
-        result = await self._post("/location/getlast/searchPost", {"did": d_id})
+    async def async_get_location(self, d_id: int, imei: str) -> Location:
+        """Return the last position reported by a watch.
+
+        Both ``did`` and ``imei`` are required, exactly as the app sends them:
+        with ``did`` alone the backend answers with a stale record - verified
+        live, four days out of date - and adding a third identifier such as
+        ``d_id`` makes it fail with code 555.
+        """
+        result = await self._post("/location/getlast/searchPost", {"did": d_id, "imei": imei})
         return Location.from_json(result)
 
     async def async_get_health(self, d_id: int, imei: str) -> Health:
@@ -235,9 +241,9 @@ class LamaxClient:
                 "did": d_id,
                 "starttime": start.strftime(fmt),
                 "endtime": end.strftime(fmt),
-                "startTime": start.strftime(fmt),
-                "endTime": end.strftime(fmt),
             },
+            # A watch that reported no position in the window answers code 2.
+            ok_codes=(CODE_OK, CODE_NO_DATA),
         )
         return [TrackPoint.from_json(item) for item in result.get("List", [])]
 
@@ -342,7 +348,7 @@ class LamaxClient:
     async def _async_snapshot(self, device: Device) -> DeviceSnapshot:
         """Gather the per-watch readings, tolerating individual failures."""
         location_result, health_result, messages_result = await asyncio.gather(
-            self.async_get_location(device.d_id),
+            self.async_get_location(device.d_id, device.imei),
             self.async_get_health(device.d_id, device.imei),
             self.async_get_messages(device.d_id),
             return_exceptions=True,
