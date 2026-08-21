@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
 from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
@@ -16,9 +18,14 @@ from homeassistant.components.notify import (
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
+from custom_components.lamax_connect.button import (
+    LOCATION_POLL_ATTEMPTS,
+    LOCATION_POLL_INTERVAL,
+)
 from custom_components.lamax_connect.lamax import LamaxError
 
 from .conftest import TEST_D_ID, TEST_IMEI
@@ -79,6 +86,70 @@ async def test_buttons(
     )
 
     getattr(mock_client, method).assert_awaited_once_with(TEST_IMEI)
+
+
+async def test_locate_button_waits_for_the_watch_to_answer(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    device,
+    location,
+    health,
+    messages,
+) -> None:
+    """Asking is not answering - keep polling until the fix actually changes."""
+    from custom_components.lamax_connect.lamax import DeviceSnapshot
+
+    await setup_entry(hass, mock_config_entry)
+    mock_client.async_get_snapshots.reset_mock()
+
+    await hass.services.async_call(
+        BUTTON_DOMAIN,
+        SERVICE_PRESS,
+        {ATTR_ENTITY_ID: "button.junior_request_location"},
+        blocking=True,
+    )
+    assert mock_client.async_get_snapshots.await_count == 0
+
+    # The watch stays silent, so the position keeps being re-read.
+    await _advance(hass, 2)
+    assert mock_client.async_get_snapshots.await_count == 2
+
+    # Once it answers, the polling stops.
+    answered = replace(location, updated_at=location.updated_at + timedelta(minutes=5))
+    mock_client.async_get_snapshots.return_value = {
+        device.imei: DeviceSnapshot(device, answered, health, messages)
+    }
+    await _advance(hass, 1)
+    assert mock_client.async_get_snapshots.await_count == 3
+
+    await _advance(hass, 3)
+    assert mock_client.async_get_snapshots.await_count == 3
+
+
+async def test_locate_button_gives_up_on_a_silent_watch(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """A watch that never answers must not be polled forever."""
+    await setup_entry(hass, mock_config_entry)
+    mock_client.async_get_snapshots.reset_mock()
+
+    await hass.services.async_call(
+        BUTTON_DOMAIN,
+        SERVICE_PRESS,
+        {ATTR_ENTITY_ID: "button.junior_request_location"},
+        blocking=True,
+    )
+    await _advance(hass, LOCATION_POLL_ATTEMPTS + 3)
+
+    assert mock_client.async_get_snapshots.await_count == LOCATION_POLL_ATTEMPTS
+
+
+async def _advance(hass: HomeAssistant, intervals: int) -> None:
+    """Let the follow-up poller fire the given number of times."""
+    for _ in range(intervals):
+        async_fire_time_changed(hass, dt_util.utcnow() + LOCATION_POLL_INTERVAL)
+        await hass.async_block_till_done()
 
 
 async def test_button_error_is_surfaced(
