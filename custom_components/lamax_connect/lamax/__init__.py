@@ -11,7 +11,12 @@ from .client import (
     LOGIN_TYPE_PHONE,
     LamaxClient,
 )
-from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
+from .exceptions import (
+    LamaxAuthError,
+    LamaxConnectionError,
+    LamaxDeviceOfflineError,
+    LamaxError,
+)
 from .models import (
     BATTERY_CHARGING,
     GROUP_RECEIVER,
@@ -50,6 +55,7 @@ __all__ = [
     "LamaxAuthError",
     "LamaxClient",
     "LamaxConnectionError",
+    "LamaxDeviceOfflineError",
     "LamaxError",
     "Location",
     "Message",

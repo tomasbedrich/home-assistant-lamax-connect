@@ -242,6 +242,35 @@ Things that only surfaced once the integration ran against a real account:
   request; the fix appears in `getlast` once the watch has woken, fixed and
   uploaded. The app keeps its refresh button disabled for 60 s and re-reads
   afterwards, so a client should poll for a few minutes rather than once.
+- **`code 3` and `4` on a `controllerDevice/*` command are about the watch, not
+  the request**: `RequestToastUtils` maps 3 to `device_ont_online_prompt`
+  ("device is not online") and 4 to `wait_online_update_prompt` ("will be
+  updated once it is online"). Verified live on a watch that had not reported
+  since the previous afternoon:
+  `{"code": 3, "service_ip": "172.31.46.42", "last_online_ip": "172.31.46.42"}`.
+  The two commands then part ways, and the integration follows each:
+  - **locate treats both as queued.** `LocationFragment` toasts
+    `location_no_net_prompt` - the request has been sent and the position will
+    follow once the watch is online - and re-reads `getlast` a minute later
+    regardless, giving up quietly if nothing changed. So a locate is never
+    reported as failed; the watch simply may not answer.
+  - **ring reports the failure.** `MoreFragment` sends code 3 straight to
+    `RequestToastUtils`, so the user is told the watch is not online. Nothing
+    rings later, so this one surfaces as an error.
+- **Device commands are node-routed.** Every `controllerDevice/*` call in the
+  app takes the host as a parameter (`CWRequestUtils.A0`, `.r`, ...) and each
+  response carries `service_ip` and `last_online_ip`. When they differ, the app
+  stores `last_online_ip` and re-sends the same command there - the watch's
+  session lives on one backend node and only that node can reach it. The
+  integration always posts to the public host and does not follow the
+  redirect; that is fine while the pair matches, which is all that has been
+  observed live.
+- **`Electricity: "0"` is not a battery reading.** A watch flat enough to
+  report 0% is off and reports nothing at all; 0 comes back on records the
+  backend stored without a battery sample - seen live alongside `accuracy: 10`,
+  `locationType: 0` and `step: "0"`, the same defaults `LocationFragment`
+  fills in for push-delivered positions. The app renders 0 and "missing"
+  identically (`ic_electric_zero`), so the integration reports both as unknown.
 - **`locationType` says how the position was obtained**: 1 = LBS (cell tower),
   2 = WiFi, anything else = GPS. `LocationFragment.c1()` picks the `ic_lbs`,
   `ic_wifi` or `ic_gps` icon on exactly that, and for 1 and 2 it makes the map

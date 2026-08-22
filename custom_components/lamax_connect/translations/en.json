@@ -107,6 +107,9 @@
     "update_failed": {
       "message": "Failed to fetch data from LAMAX Connect: {error}"
     },
+    "watch_offline": {
+      "message": "The watch is not connected right now, so it cannot be reached."
+    },
     "command_failed": {
       "message": "The watch did not accept the command: {error}"
     },

@@ -17,6 +17,10 @@ class LamaxAuthError(LamaxError):
     """Credentials rejected (code 24) or session expired (code 25)."""
 
 
+class LamaxDeviceOfflineError(LamaxError):
+    """The watch is not connected to the backend, so it cannot be commanded."""
+
+
 class LamaxConnectionError(LamaxError):
     """The backend could not be reached, or returned an undecodable response."""
 

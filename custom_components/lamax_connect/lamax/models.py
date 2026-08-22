@@ -158,14 +158,16 @@ class Location:
     def from_json(cls, data: JsonDict) -> Location:
         """Build from a /location/getlast/searchPost response."""
         uploadtime = _as_int(data.get("uploadtime"), 0)
-        raw_battery = data.get("Electricity")
-        level = _as_int(raw_battery) if raw_battery is not None else None
+        level = _as_int(data.get("Electricity"))
         charging = level == BATTERY_CHARGING
         return cls(
             latitude=_as_float(data.get("lat")),
             longitude=_as_float(data.get("lng")),
-            # While charging the field is a sentinel, not a percentage.
-            battery=None if charging else level,
+            # While charging the field is a sentinel, not a percentage - and 0
+            # is not a reading either: a watch flat enough to report 0 % is off
+            # and reports nothing at all. It rides along with positions the
+            # backend stored without a battery sample.
+            battery=level if level and not charging else None,
             charging=charging,
             accuracy=_as_int(data.get("accuracy")),
             location_type=_as_int(data.get("locationType")),

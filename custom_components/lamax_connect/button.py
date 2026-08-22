@@ -16,7 +16,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import DOMAIN
 from .coordinator import LamaxConfigEntry, LamaxCoordinator
 from .entity import LamaxEntity, async_setup_lamax_platform
-from .lamax import LamaxClient, LamaxError
+from .lamax import LamaxClient, LamaxDeviceOfflineError, LamaxError
 
 PARALLEL_UPDATES = 1
 
@@ -90,6 +90,11 @@ class LamaxButton(LamaxEntity, ButtonEntity):
         """Send the command to the watch."""
         try:
             await self.entity_description.press_fn(self.coordinator.client, self._imei)
+        except LamaxDeviceOfflineError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="watch_offline",
+            ) from err
         except LamaxError as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,

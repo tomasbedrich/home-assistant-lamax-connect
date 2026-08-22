@@ -107,6 +107,9 @@
     "update_failed": {
       "message": "Nepodařilo se načíst data z LAMAX Connect: {error}"
     },
+    "watch_offline": {
+      "message": "Hodinky nejsou právě připojené, nelze je zastihnout."
+    },
     "command_failed": {
       "message": "Hodinky nepřijaly příkaz: {error}"
     },

@@ -85,6 +85,19 @@ def test_missing_battery_is_unknown() -> None:
     assert location.charging is False
 
 
+def test_zero_battery_is_unknown_not_flat() -> None:
+    """0 rides along with positions stored without a battery sample.
+
+    A watch flat enough to report 0% is off and reports nothing at all, so the
+    figure is never a real percentage - verified live on a watch whose last
+    position came back with "Electricity": "0".
+    """
+    location = Location.from_json({"Electricity": "0"})
+
+    assert location.battery is None
+    assert location.charging is False
+
+
 def test_only_the_cell_tower_fix_is_coarse() -> None:
     """Type 1 is a cell tower; 0 is GPS and 2 is WiFi, both usable."""
     assert Location.from_json({"locationType": 1}).is_coarse is True

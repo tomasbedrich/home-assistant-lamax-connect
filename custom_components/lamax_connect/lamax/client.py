@@ -16,7 +16,12 @@ from typing import Any, Final
 import aiohttp
 
 from .crypto import decrypt, encrypt
-from .exceptions import LamaxAuthError, LamaxConnectionError, LamaxError
+from .exceptions import (
+    LamaxAuthError,
+    LamaxConnectionError,
+    LamaxDeviceOfflineError,
+    LamaxError,
+)
 from .models import (
     GROUP_RECEIVER,
     MAX_MESSAGE_LENGTH,
@@ -45,6 +50,11 @@ _TIMEOUT: Final = aiohttp.ClientTimeout(total=30)
 # success is declared per call rather than globally.
 CODE_OK: Final = 0
 CODE_NO_DATA: Final = 2  # e.g. "no geofences configured" - not an error
+# A command for a watch that is not connected to the backend right now: 3 is
+# "device not online", 4 is "will be updated once it is online"
+# (RequestToastUtils). The locate flow makes no difference between them - it
+# tells the user the request is queued and re-reads the position anyway.
+CODE_DEVICE_OFFLINE: Final = (3, 4)
 CODE_BAD_CREDENTIALS: Final = 24
 CODE_SESSION_EXPIRED: Final = 25
 
@@ -156,6 +166,20 @@ class LamaxClient:
             raise LamaxError(code, result.get("msg", ""))
         return result
 
+    async def _post_command(self, path: str, imei: str) -> None:
+        """Send a one-shot command to a watch.
+
+        Nothing can be delivered to a watch that is not connected right now,
+        and the backend says so with its own code rather than an error - worth
+        telling apart, because it is about the watch and not about the request.
+        """
+        try:
+            await self._post(path, {"imei": imei})
+        except LamaxError as err:
+            if err.code not in CODE_DEVICE_OFFLINE:
+                raise
+            raise LamaxDeviceOfflineError(err.code, err.msg) from err
+
     # -- authentication ---------------------------------------------------
 
     async def login(
@@ -195,7 +219,7 @@ class LamaxClient:
 
     async def async_find_device(self, imei: str) -> None:
         """Make the watch ring so it can be located physically."""
-        await self._post("/controllerDevice/findPost", {"imei": imei})
+        await self._post_command("/controllerDevice/findPost", imei)
 
     # -- geolocation ------------------------------------------------------
 
@@ -203,9 +227,17 @@ class LamaxClient:
         """Ask the watch to push a fresh GPS fix.
 
         The fix is not in the response - poll :meth:`async_get_location`
-        shortly afterwards.
+        shortly afterwards. A watch that is offline is not a failure here: the
+        backend keeps the request until the watch checks in, which is what the
+        app says before polling for the fix anyway.
         """
-        await self._post("/controllerDevice/ask/localtionPost", {"imei": imei})
+        result = await self._post(
+            "/controllerDevice/ask/localtionPost",
+            {"imei": imei},
+            ok_codes=(CODE_OK, *CODE_DEVICE_OFFLINE),
+        )
+        if int(result.get("code", CODE_OK)) in CODE_DEVICE_OFFLINE:
+            _LOGGER.info("The watch is offline, the locate request waits until it connects")
 
     async def async_get_location(self, d_id: int, imei: str) -> Location:
         """Return the last position reported by a watch.

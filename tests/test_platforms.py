@@ -26,7 +26,7 @@ from custom_components.lamax_connect.button import (
     LOCATION_POLL_ATTEMPTS,
     LOCATION_POLL_INTERVAL,
 )
-from custom_components.lamax_connect.lamax import LamaxError
+from custom_components.lamax_connect.lamax import LamaxDeviceOfflineError, LamaxError
 
 from .conftest import TEST_D_ID, TEST_IMEI
 from .test_init import setup_entry
@@ -150,6 +150,24 @@ async def _advance(hass: HomeAssistant, intervals: int) -> None:
     for _ in range(intervals):
         async_fire_time_changed(hass, dt_util.utcnow() + LOCATION_POLL_INTERVAL)
         await hass.async_block_till_done()
+
+
+async def test_offline_watch_is_named_as_such(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """An offline watch is reported as offline, not as a rejected command."""
+    await setup_entry(hass, mock_config_entry)
+    mock_client.async_find_device.side_effect = LamaxDeviceOfflineError(3)
+
+    with pytest.raises(HomeAssistantError) as err:
+        await hass.services.async_call(
+            BUTTON_DOMAIN,
+            SERVICE_PRESS,
+            {ATTR_ENTITY_ID: "button.junior_find_watch"},
+            blocking=True,
+        )
+
+    assert err.value.translation_key == "watch_offline"
 
 
 async def test_button_error_is_surfaced(

@@ -15,6 +15,7 @@ from custom_components.lamax_connect.lamax import (
     LamaxAuthError,
     LamaxClient,
     LamaxConnectionError,
+    LamaxDeviceOfflineError,
     LamaxError,
     message_width,
     truncate_message,
@@ -319,6 +320,35 @@ async def test_find_and_locate_commands(client: LamaxClient) -> None:
         await client.async_request_location_update("869123456789012")
 
     assert len(mocked.requests) == 2
+
+
+@pytest.mark.parametrize("code", [3, 4])
+async def test_locate_of_an_offline_watch_is_queued(client: LamaxClient, code: int) -> None:
+    """Codes 3 and 4 mean the backend holds the request until the watch is back.
+
+    The app says as much and polls for the fix anyway, so this is not an error.
+    """
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/controllerDevice/ask/localtionPost", body=encrypted({"code": code}))
+        await client.async_request_location_update("869123456789012")
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [(3, LamaxDeviceOfflineError), (4, LamaxDeviceOfflineError), (557, LamaxError)],
+)
+async def test_ringing_an_offline_watch_fails(
+    client: LamaxClient, code: int, expected: type[LamaxError]
+) -> None:
+    """Nothing rings on a watch that is not connected, and the app says so."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/controllerDevice/findPost", body=encrypted({"code": code}))
+        with pytest.raises(expected) as err:
+            await client.async_find_device("869123456789012")
+
+    assert type(err.value) is expected
 
 
 async def test_track_history(client: LamaxClient) -> None:
