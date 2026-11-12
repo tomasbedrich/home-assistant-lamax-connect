@@ -126,6 +126,7 @@ For each watch (`<watch>` is the watch name from the app):
 | `sensor.<watch>_blood_oxygen` | Last blood oxygen (SpO₂) measurement |
 | `sensor.<watch>_blood_oxygen_measured` | When that SpO₂ reading was measured |
 | `sensor.<watch>_location_updated` | When the position and battery were reported |
+| `sensor.<watch>_last_seen` | When the watch was last online (or, if not seen online since a restart, its newest report) |
 
 ### Family chat
 
@@ -230,7 +231,7 @@ it - prefer that:
 Steps, calories and distance reset daily on the watch.
 | `binary_sensor.<watch>_charging` | Whether the watch was on the charger at the last position report |
 | `binary_sensor.<watch>_connectivity` | Whether the watch is connected right now and can take commands |
-| `switch.<watch>_lbs_location` | Allow cell-tower (LBS) positioning; off leaves only GPS and WiFi |
+| `switch.<watch>_lbs_location` | Allow cell-tower (LBS) positioning; off leaves only GPS and WiFi. Disabled by default; not every watch supports it (unknown state) |
 | `button.<watch>_request_location` | Ask the watch for a fresh GPS fix |
 | `button.<watch>_find_watch` | Make the watch ring so it can be found |
 

@@ -15,9 +15,10 @@ from homeassistant.components.notify import (
 from homeassistant.components.notify import (
     DOMAIN as NOTIFY_DOMAIN,
 )
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -26,6 +27,7 @@ from custom_components.lamax_connect.button import (
     LOCATION_POLL_ATTEMPTS,
     LOCATION_POLL_INTERVAL,
 )
+from custom_components.lamax_connect.const import DOMAIN
 from custom_components.lamax_connect.lamax import LamaxDeviceOfflineError, LamaxError
 
 from .conftest import TEST_D_ID, TEST_IMEI
@@ -186,6 +188,58 @@ async def test_button_error_is_surfaced(
         )
 
 
+async def _setup_with_lbs_switch(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    """Set up with the (disabled by default) LBS switch enabled."""
+    entry.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create(
+        "switch",
+        DOMAIN,
+        f"{TEST_IMEI}_lbs_location",
+        config_entry=entry,
+        suggested_object_id="junior_lbs_location",
+    )
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_lbs_switch_is_disabled_by_default(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """Most people never need it, so it must not show up or poll unasked."""
+    await setup_entry(hass, mock_config_entry)
+
+    entry = er.async_get(hass).async_get("switch.junior_lbs_location")
+    assert entry is not None
+    assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert entry.entity_category is EntityCategory.CONFIG
+    mock_client.async_get_lbs_enabled.assert_not_awaited()
+
+
+@pytest.mark.parametrize(("value", "state"), [(True, "on"), (False, "off"), (None, "unknown")])
+async def test_lbs_switch_reads_setting(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    value: bool | None,
+    state: str,
+) -> None:
+    """Once enabled, the switch reads the setting straight away."""
+    mock_client.async_get_lbs_enabled.return_value = value
+    await _setup_with_lbs_switch(hass, mock_config_entry)
+
+    assert hass.states.get("switch.junior_lbs_location").state == state
+
+
+async def test_lbs_switch_unsupported_watch_is_unknown(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """A watch that rejects the setting (code 999) shows unknown, not an error."""
+    mock_client.async_get_lbs_enabled.side_effect = LamaxError(999, "")
+    await _setup_with_lbs_switch(hass, mock_config_entry)
+
+    assert hass.states.get("switch.junior_lbs_location").state == "unknown"
+
+
 @pytest.mark.parametrize(("service", "enabled"), [("turn_off", False), ("turn_on", True)])
 async def test_lbs_switch(
     hass: HomeAssistant,
@@ -194,25 +248,48 @@ async def test_lbs_switch(
     service: str,
     enabled: bool,
 ) -> None:
-    """Toggling the switch sets LBS on the watch and re-reads it."""
-    await setup_entry(hass, mock_config_entry)
-    mock_client.async_get_snapshots.reset_mock()
+    """Toggling the switch sets LBS on the watch and reads it back."""
+    mock_client.async_get_lbs_enabled.return_value = not enabled
+    await _setup_with_lbs_switch(hass, mock_config_entry)
+    mock_client.async_set_lbs_enabled.side_effect = lambda *_: setattr(
+        mock_client.async_get_lbs_enabled, "return_value", enabled
+    )
 
     await hass.services.async_call(
         "switch", service, {ATTR_ENTITY_ID: "switch.junior_lbs_location"}, blocking=True
     )
 
     mock_client.async_set_lbs_enabled.assert_awaited_once_with(TEST_D_ID, TEST_IMEI, enabled)
+    assert hass.states.get("switch.junior_lbs_location").state == ("on" if enabled else "off")
 
 
 async def test_lbs_switch_error_is_surfaced(
     hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
 ) -> None:
     """A rejected change is reported instead of silently ignored."""
-    await setup_entry(hass, mock_config_entry)
-    mock_client.async_set_lbs_enabled.side_effect = LamaxError(1, "nope")
+    await _setup_with_lbs_switch(hass, mock_config_entry)
+    mock_client.async_set_lbs_enabled.side_effect = LamaxError(999, "")
 
     with pytest.raises(HomeAssistantError):
         await hass.services.async_call(
             "switch", "turn_off", {ATTR_ENTITY_ID: "switch.junior_lbs_location"}, blocking=True
         )
+
+
+async def test_locate_button_does_not_wait_for_an_offline_watch(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """An offline watch only answers once it connects - the regular poll catches that."""
+    await setup_entry(hass, mock_config_entry)
+    mock_client.async_request_location_update.return_value = False
+    mock_client.async_get_snapshots.reset_mock()
+
+    await hass.services.async_call(
+        BUTTON_DOMAIN,
+        SERVICE_PRESS,
+        {ATTR_ENTITY_ID: "button.junior_request_location"},
+        blocking=True,
+    )
+    await _advance(hass, 3)
+
+    assert mock_client.async_get_snapshots.await_count == 0

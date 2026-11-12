@@ -94,6 +94,9 @@
       },
       "steps": {
         "name": "Kroky"
+      },
+      "last_seen": {
+        "name": "Naposledy viděno"
       }
     },
     "switch": {

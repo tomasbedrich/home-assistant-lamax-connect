@@ -240,6 +240,8 @@ class LamaxClient:
         """Return whether the watch may fall back to cell-tower (LBS) positioning.
 
         None when the backend does not say - the app then keeps LBS enabled.
+        Not every watch supports it: verified live, a type 27 watch on firmware
+        L36W_A_S90_WC_VE_V001_250801 answers both get and set with code 999.
         """
         result = await self._post(
             "/app/lbsOpenCloseStatus", {"did": d_id, "imei": imei, "method": "get", "msg": ""}
@@ -256,13 +258,13 @@ class LamaxClient:
 
     # -- geolocation ------------------------------------------------------
 
-    async def async_request_location_update(self, imei: str) -> None:
+    async def async_request_location_update(self, imei: str) -> bool:
         """Ask the watch to push a fresh GPS fix.
 
         The fix is not in the response - poll :meth:`async_get_location`
         shortly afterwards. A watch that is offline is not a failure here: the
-        backend keeps the request until the watch checks in, which is what the
-        app says before polling for the fix anyway.
+        backend keeps the request until the watch checks in. Returns whether
+        the watch got the request right away, i.e. whether a fix is coming soon.
         """
         result = await self._post(
             "/controllerDevice/ask/localtionPost",
@@ -271,6 +273,8 @@ class LamaxClient:
         )
         if int(result.get("code", CODE_OK)) in CODE_DEVICE_OFFLINE:
             _LOGGER.info("The watch is offline, the locate request waits until it connects")
+            return False
+        return True
 
     async def async_get_location(self, d_id: int, imei: str) -> Location:
         """Return the last position reported by a watch.
@@ -412,12 +416,11 @@ class LamaxClient:
 
     async def _async_snapshot(self, device: Device) -> DeviceSnapshot:
         """Gather the per-watch readings, tolerating individual failures."""
-        location, health, messages, online, lbs_enabled = await asyncio.gather(
+        location, health, messages, online = await asyncio.gather(
             self.async_get_location(device.d_id, device.imei),
             self.async_get_health(device.d_id, device.imei),
             self.async_get_messages(device.d_id),
             self.async_is_online(device.imei),
-            self.async_get_lbs_enabled(device.d_id, device.imei),
             return_exceptions=True,
         )
         imei = device.imei
@@ -427,7 +430,6 @@ class LamaxClient:
             _or_none(health, imei, "health data"),
             tuple(_or_none(messages, imei, "messages") or ()),
             _or_none(online, imei, "online status"),
-            _or_none(lbs_enabled, imei, "LBS setting"),
         )
 
 

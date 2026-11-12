@@ -79,7 +79,6 @@ async def test_setup_connection_failure_retries(
         ("sensor.junior_heart_rate", "93"),
         ("sensor.junior_blood_oxygen", "99"),
         ("binary_sensor.junior_connectivity", "on"),
-        ("switch.junior_lbs_location", "on"),
     ],
 )
 async def test_entities_created(
@@ -233,3 +232,61 @@ async def test_coarse_fix_does_not_move_the_tracker(
     state = hass.states.get("device_tracker.junior")
     assert state.state == "unknown"
     assert "latitude" not in state.attributes
+
+
+async def test_last_seen_while_online_is_now(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """An online watch was seen at the last poll."""
+    before = dt_util.utcnow()
+    await setup_entry(hass, mock_config_entry)
+
+    seen = dt_util.parse_datetime(hass.states.get("sensor.junior_last_seen").state)
+    assert seen is not None
+    assert seen >= before.replace(microsecond=0)
+
+
+async def test_last_seen_keeps_the_moment_the_watch_went_offline(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    device,
+    location,
+    health,
+    messages,
+) -> None:
+    """Once offline, the time stops at the last poll that saw it online."""
+    from custom_components.lamax_connect.lamax import DeviceSnapshot
+
+    await setup_entry(hass, mock_config_entry)
+    seen_online = hass.states.get("sensor.junior_last_seen").state
+
+    mock_client.async_get_snapshots.return_value = {
+        device.imei: DeviceSnapshot(device, location, health, messages, online=False)
+    }
+    await mock_config_entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.junior_last_seen").state == seen_online
+
+
+async def test_last_seen_falls_back_to_the_newest_report(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    device,
+    location,
+    health,
+    messages,
+) -> None:
+    """Never seen online (e.g. offline since a restart): the newest report stands in."""
+    from custom_components.lamax_connect.lamax import DeviceSnapshot
+
+    mock_client.async_get_snapshots.return_value = {
+        device.imei: DeviceSnapshot(device, location, health, messages, online=False)
+    }
+    await setup_entry(hass, mock_config_entry)
+
+    newest = max(location.updated_at, health.steps_at, health.heart_rate_at, health.blood_oxygen_at)
+    state = hass.states.get("sensor.junior_last_seen").state
+    assert dt_util.parse_datetime(state) == newest.replace(microsecond=0)

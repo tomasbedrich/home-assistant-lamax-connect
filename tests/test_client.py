@@ -357,7 +357,7 @@ async def test_find_and_locate_commands(client: LamaxClient) -> None:
         mocked.post(f"{BASE}/controllerDevice/findPost", body=encrypted({"code": 0}))
         mocked.post(f"{BASE}/controllerDevice/ask/localtionPost", body=encrypted({"code": 0}))
         await client.async_find_device("869123456789012")
-        await client.async_request_location_update("869123456789012")
+        assert await client.async_request_location_update("869123456789012") is True
 
     assert len(mocked.requests) == 2
 
@@ -366,12 +366,12 @@ async def test_find_and_locate_commands(client: LamaxClient) -> None:
 async def test_locate_of_an_offline_watch_is_queued(client: LamaxClient, code: int) -> None:
     """Codes 3 and 4 mean the backend holds the request until the watch is back.
 
-    The app says as much and polls for the fix anyway, so this is not an error.
+    Not an error, but no fix is coming soon either - the caller is told so.
     """
     client.token = "TOK"
     with aioresponses() as mocked:
         mocked.post(f"{BASE}/controllerDevice/ask/localtionPost", body=encrypted({"code": code}))
-        await client.async_request_location_update("869123456789012")
+        assert await client.async_request_location_update("869123456789012") is False
 
 
 @pytest.mark.parametrize(

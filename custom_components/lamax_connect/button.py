@@ -36,7 +36,8 @@ LOCATION_POLL_ATTEMPTS = 9
 class LamaxButtonEntityDescription(ButtonEntityDescription):
     """Describes a LAMAX Connect button."""
 
-    press_fn: Callable[[LamaxClient, str], Awaitable[None]]
+    # Returns False when the watch is offline and will only act once it connects.
+    press_fn: Callable[[LamaxClient, str], Awaitable[bool | None]]
     # Set for commands the watch answers asynchronously, with a new position.
     awaits_fix: bool = False
 
@@ -89,7 +90,7 @@ class LamaxButton(LamaxEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Send the command to the watch."""
         try:
-            await self.entity_description.press_fn(self.coordinator.client, self._imei)
+            delivered = await self.entity_description.press_fn(self.coordinator.client, self._imei)
         except LamaxDeviceOfflineError as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
@@ -102,7 +103,7 @@ class LamaxButton(LamaxEntity, ButtonEntity):
                 translation_placeholders={"error": str(err)},
             ) from err
 
-        if self.entity_description.awaits_fix:
+        if self.entity_description.awaits_fix and delivered:
             self._await_fix()
 
     @callback

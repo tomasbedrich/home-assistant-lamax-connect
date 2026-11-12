@@ -94,6 +94,9 @@
       },
       "steps": {
         "name": "Steps"
+      },
+      "last_seen": {
+        "name": "Last seen"
       }
     },
     "switch": {

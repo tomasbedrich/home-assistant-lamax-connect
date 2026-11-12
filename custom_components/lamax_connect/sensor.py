@@ -13,8 +13,9 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfLength
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .coordinator import LamaxConfigEntry, LamaxCoordinator
 from .entity import LamaxEntity, async_setup_lamax_platform
@@ -120,7 +121,8 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda coordinator, imei: [
-            LamaxSensor(coordinator, imei, description) for description in SENSORS
+            *(LamaxSensor(coordinator, imei, description) for description in SENSORS),
+            LamaxLastSeenSensor(coordinator, imei),
         ],
     )
 
@@ -144,3 +146,46 @@ class LamaxSensor(LamaxEntity, SensorEntity):
     def native_value(self) -> int | float | datetime | None:
         """Return the current value."""
         return self.entity_description.value_fn(self.device_data)
+
+
+class LamaxLastSeenSensor(LamaxEntity, SensorEntity):
+    """When the watch was last in contact with the backend.
+
+    The backend only says whether the watch is online right now, so the moment
+    it was last seen online is remembered here. Until it has been seen online
+    (e.g. after a restart while it is offline), the newest timestamp any of its
+    reports carries stands in.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key = "last_seen"
+
+    def __init__(self, coordinator: LamaxCoordinator, imei: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, imei, "last_seen")
+        self._seen_online: datetime | None = None
+        self._note_online()
+
+    def _note_online(self) -> None:
+        if self.device_data.online:
+            self._seen_online = dt_util.utcnow()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        if self._imei in self.coordinator.data:
+            self._note_online()
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the last moment the watch was known to be in contact."""
+        data = self.device_data
+        location, health = data.location, data.health
+        seen = (
+            self._seen_online,
+            location.updated_at if location else None,
+            health.steps_at if health else None,
+            health.heart_rate_at if health else None,
+            health.blood_oxygen_at if health else None,
+        )
+        return max((moment for moment in seen if moment), default=None)
