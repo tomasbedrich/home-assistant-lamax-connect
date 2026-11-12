@@ -118,12 +118,17 @@ def mock_client(
         client.u_id = 2000000000000002
         client.login = AsyncMock(return_value=None)
         client.async_get_snapshots = AsyncMock(
-            return_value={device.imei: DeviceSnapshot(device, location, health, messages)}
+            return_value={
+                device.imei: DeviceSnapshot(
+                    device, location, health, messages, online=True, lbs_enabled=True
+                )
+            }
         )
         client.async_send_message = AsyncMock(return_value="ok")
         client.async_send_group_message = AsyncMock(return_value="ok")
         client.async_find_device = AsyncMock(return_value=None)
         client.async_request_location_update = AsyncMock(return_value=None)
+        client.async_set_lbs_enabled = AsyncMock(return_value=None)
         yield client
 
 

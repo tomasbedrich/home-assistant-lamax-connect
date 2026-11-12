@@ -184,3 +184,35 @@ async def test_button_error_is_surfaced(
             {ATTR_ENTITY_ID: "button.junior_find_watch"},
             blocking=True,
         )
+
+
+@pytest.mark.parametrize(("service", "enabled"), [("turn_off", False), ("turn_on", True)])
+async def test_lbs_switch(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    service: str,
+    enabled: bool,
+) -> None:
+    """Toggling the switch sets LBS on the watch and re-reads it."""
+    await setup_entry(hass, mock_config_entry)
+    mock_client.async_get_snapshots.reset_mock()
+
+    await hass.services.async_call(
+        "switch", service, {ATTR_ENTITY_ID: "switch.junior_lbs_location"}, blocking=True
+    )
+
+    mock_client.async_set_lbs_enabled.assert_awaited_once_with(TEST_D_ID, TEST_IMEI, enabled)
+
+
+async def test_lbs_switch_error_is_surfaced(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """A rejected change is reported instead of silently ignored."""
+    await setup_entry(hass, mock_config_entry)
+    mock_client.async_set_lbs_enabled.side_effect = LamaxError(1, "nope")
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "switch", "turn_off", {ATTR_ENTITY_ID: "switch.junior_lbs_location"}, blocking=True
+        )

@@ -46,6 +46,11 @@
       "steps": {
         "default": "mdi:shoe-print"
       }
+    },
+    "switch": {
+      "lbs_location": {
+        "default": "mdi:radio-tower"
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 """Async client for the LAMAX Connect ("watchxr") backend.
 
-Reverse engineered from the LAMAX Connect Android app v1.0.17
+Reverse engineered from the LAMAX Connect Android app v1.0.25
 (``com.ztc.lamax``) and verified against the live backend. Unofficial and
 unaffiliated with LAMAX - endpoints may change without notice.
 """
@@ -43,7 +43,7 @@ ALTERNATE_HOST: Final = "elem6.lagenio.com"
 
 # Static constant the app sends on every request; not a real version string.
 _APP_SECRET: Final = "YkMG%4#^4LUIunhg"
-_APP_VERSION: Final = "1.0.17"
+_APP_VERSION: Final = "1.0.25"
 _TIMEOUT: Final = aiohttp.ClientTimeout(total=30)
 
 # Backend result codes. The API reuses this numeric space per endpoint, so
@@ -221,6 +221,39 @@ class LamaxClient:
         """Make the watch ring so it can be located physically."""
         await self._post_command("/controllerDevice/findPost", imei)
 
+    async def async_is_online(self, imei: str) -> bool:
+        """Return whether the watch is connected to the backend right now.
+
+        The answer is the result code itself, exactly how the app reads it:
+        0 is online, 3 ("device not online") is offline.
+        """
+        result = await self._post(
+            "/controllerDevice/getDeviceOnlineStatus",
+            {"imei": imei},
+            ok_codes=(CODE_OK, *CODE_DEVICE_OFFLINE),
+        )
+        return int(result.get("code", CODE_OK)) == CODE_OK
+
+    # -- settings ---------------------------------------------------------
+
+    async def async_get_lbs_enabled(self, d_id: int, imei: str) -> bool | None:
+        """Return whether the watch may fall back to cell-tower (LBS) positioning.
+
+        None when the backend does not say - the app then keeps LBS enabled.
+        """
+        result = await self._post(
+            "/app/lbsOpenCloseStatus", {"did": d_id, "imei": imei, "method": "get", "msg": ""}
+        )
+        value = result.get("type")
+        return None if value in (None, "") else str(value) == "1"
+
+    async def async_set_lbs_enabled(self, d_id: int, imei: str, enabled: bool) -> None:
+        """Allow or forbid cell-tower (LBS) positioning, leaving only GPS and WiFi."""
+        await self._post(
+            "/app/lbsOpenCloseStatus",
+            {"did": d_id, "imei": imei, "method": "set", "msg": "1" if enabled else "0"},
+        )
+
     # -- geolocation ------------------------------------------------------
 
     async def async_request_location_update(self, imei: str) -> None:
@@ -379,32 +412,30 @@ class LamaxClient:
 
     async def _async_snapshot(self, device: Device) -> DeviceSnapshot:
         """Gather the per-watch readings, tolerating individual failures."""
-        location_result, health_result, messages_result = await asyncio.gather(
+        location, health, messages, online, lbs_enabled = await asyncio.gather(
             self.async_get_location(device.d_id, device.imei),
             self.async_get_health(device.d_id, device.imei),
             self.async_get_messages(device.d_id),
+            self.async_is_online(device.imei),
+            self.async_get_lbs_enabled(device.d_id, device.imei),
             return_exceptions=True,
         )
-        for value in (location_result, health_result, messages_result):
-            if isinstance(value, LamaxAuthError):
-                raise value
+        imei = device.imei
+        return DeviceSnapshot(
+            device,
+            _or_none(location, imei, "location"),
+            _or_none(health, imei, "health data"),
+            tuple(_or_none(messages, imei, "messages") or ()),
+            _or_none(online, imei, "online status"),
+            _or_none(lbs_enabled, imei, "LBS setting"),
+        )
 
-        location: Location | None = None
-        if isinstance(location_result, BaseException):
-            _LOGGER.debug("No location for %s: %s", device.imei, location_result)
-        else:
-            location = location_result
 
-        health: Health | None = None
-        if isinstance(health_result, BaseException):
-            _LOGGER.debug("No health data for %s: %s", device.imei, health_result)
-        else:
-            health = health_result
-
-        messages: tuple[Message, ...] = ()
-        if isinstance(messages_result, BaseException):
-            _LOGGER.debug("No messages for %s: %s", device.imei, messages_result)
-        else:
-            messages = tuple(messages_result)
-
-        return DeviceSnapshot(device, location, health, messages)
+def _or_none[T](result: T | BaseException, imei: str, what: str) -> T | None:
+    """Drop a failed per-watch reading, but never hide an expired session."""
+    if isinstance(result, LamaxAuthError):
+        raise result
+    if isinstance(result, BaseException):
+        _LOGGER.debug("No %s for %s: %s", what, imei, result)
+        return None
+    return result

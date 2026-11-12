@@ -95,6 +95,11 @@
       "steps": {
         "name": "Steps"
       }
+    },
+    "switch": {
+      "lbs_location": {
+        "name": "LBS location"
+      }
     }
   },
   "exceptions": {
@@ -112,6 +117,9 @@
     },
     "send_message_failed": {
       "message": "Failed to send the message to the watch: {error}"
+    },
+    "watch_offline": {
+      "message": "The watch is not connected right now, so it cannot be reached."
     }
   }
 }

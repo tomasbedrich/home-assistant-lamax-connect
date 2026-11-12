@@ -269,6 +269,8 @@ class DeviceSnapshot:
     location: Location | None
     health: Health | None
     messages: tuple[Message, ...] = ()
+    online: bool | None = None
+    lbs_enabled: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)

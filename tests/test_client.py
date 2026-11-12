@@ -180,6 +180,46 @@ async def test_get_location_sends_did_and_imei(client: LamaxClient) -> None:
     assert sent["imei"] == "860000000000001"
 
 
+@pytest.mark.parametrize(("code", "online"), [(0, True), (3, False)])
+async def test_is_online(client: LamaxClient, code: int, online: bool) -> None:
+    """The online status is the result code itself."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE}/controllerDevice/getDeviceOnlineStatus", body=encrypted({"code": code})
+        )
+        assert await client.async_is_online("111") is online
+
+
+@pytest.mark.parametrize(("value", "enabled"), [("1", True), ("0", False), (None, None)])
+async def test_get_lbs_enabled(
+    client: LamaxClient, value: str | None, enabled: bool | None
+) -> None:
+    """The LBS setting comes back in "type"; without it the state is unknown."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/app/lbsOpenCloseStatus", body=encrypted({"code": 0, "type": value}))
+        assert await client.async_get_lbs_enabled(7, "111") is enabled
+        request = next(iter(mocked.requests.values()))[0]
+
+    body = json.loads(decrypt(request.kwargs["data"]))
+    assert body["method"] == "get"
+    assert (body["did"], body["imei"]) == (7, "111")
+
+
+@pytest.mark.parametrize(("enabled", "msg"), [(True, "1"), (False, "0")])
+async def test_set_lbs_enabled(client: LamaxClient, enabled: bool, msg: str) -> None:
+    """Switching LBS sends the new value in "msg", as the app does."""
+    client.token = "TOK"
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE}/app/lbsOpenCloseStatus", body=encrypted({"code": 0}))
+        await client.async_set_lbs_enabled(7, "111", enabled)
+        request = next(iter(mocked.requests.values()))[0]
+
+    body = json.loads(decrypt(request.kwargs["data"]))
+    assert (body["method"], body["msg"]) == ("set", msg)
+
+
 async def test_get_geofences_accepts_no_data_code(client: LamaxClient) -> None:
     """Code 2 means 'no geofences configured', not an error."""
     client.token = "TOK"

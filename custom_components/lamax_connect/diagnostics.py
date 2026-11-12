@@ -37,6 +37,8 @@ async def async_get_config_entry_diagnostics(
                 {
                     "device": asdict(data.device),
                     "location": asdict(data.location) if data.location else None,
+                    "online": data.online,
+                    "lbs_enabled": data.lbs_enabled,
                 },
                 TO_REDACT,
             )

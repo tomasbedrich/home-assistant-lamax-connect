@@ -95,6 +95,11 @@
       "steps": {
         "name": "Kroky"
       }
+    },
+    "switch": {
+      "lbs_location": {
+        "name": "Poloha LBS"
+      }
     }
   },
   "exceptions": {

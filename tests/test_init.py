@@ -78,6 +78,8 @@ async def test_setup_connection_failure_retries(
         ("sensor.junior_distance", "6.78"),
         ("sensor.junior_heart_rate", "93"),
         ("sensor.junior_blood_oxygen", "99"),
+        ("binary_sensor.junior_connectivity", "on"),
+        ("switch.junior_lbs_location", "on"),
     ],
 )
 async def test_entities_created(

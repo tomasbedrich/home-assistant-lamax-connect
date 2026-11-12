@@ -24,7 +24,7 @@ PARALLEL_UPDATES = 0
 class LamaxBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes a LAMAX Connect binary sensor."""
 
-    value_fn: Callable[[DeviceSnapshot], bool]
+    value_fn: Callable[[DeviceSnapshot], bool | None]
 
 
 BINARY_SENSORS: tuple[LamaxBinarySensorEntityDescription, ...] = (
@@ -34,6 +34,13 @@ BINARY_SENSORS: tuple[LamaxBinarySensorEntityDescription, ...] = (
         key="charging",
         device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
         value_fn=lambda data: bool(data.location and data.location.charging),
+    ),
+    # Unlike the readings above this is live: whether the watch can be reached
+    # right now, e.g. for "Find watch" or a locate request.
+    LamaxBinarySensorEntityDescription(
+        key="online",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        value_fn=lambda data: data.online,
     ),
 )
 
@@ -69,6 +76,6 @@ class LamaxBinarySensor(LamaxEntity, BinarySensorEntity):
         self.entity_description = description
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return the current state."""
         return self.entity_description.value_fn(self.device_data)
